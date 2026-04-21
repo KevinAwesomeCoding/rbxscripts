@@ -9,6 +9,126 @@ local starterGui       = game:GetService("StarterGui")
 
 local player = players.LocalPlayer
 
+-- ── WEBHOOK SETUP ─────────────────────────────────────────────────────────
+
+local WEBHOOK_URL    = "YOUR_WEBHOOK_HERE"
+local webhookEnabled = false
+
+-- ── WEBHOOK FILTER TABLES (edit these to control notifications) ───────────
+-- 1. Specific cars by display name (empty = no car filter)
+local webhookFilterCars = {
+    -- e.g. "Porcha Cayana",
+}
+-- 2. Rarities (empty = no rarity filter)
+local webhookFilterRarities = {
+    -- e.g. "Legendary", "Godly", "Secret",
+}
+-- 3. Types from nameEffect.Type StringValue (empty = no type filter)
+local webhookFilterTypes = {
+    -- e.g. "Special",
+}
+
+-- A notification fires if the car matches ANY active filter.
+-- If ALL three tables are empty, every car in SpawnedCars will notify.
+local webhookSeen = {}  -- keyed by car instance, prevents duplicate fires
+
+-- ── CAR ICON MAP (MeshId → thumbnail) ────────────────────────────────────
+
+local carIconMap = {
+    ["Car1"]  = "110216476511999",
+    ["Car2"]  = "126365735065041",
+    ["Car3"]  = "78620792236154",
+    ["Car4"]  = "129219317176062",
+    ["Car5"]  = "88363247535066",
+    ["Car6"]  = "107308563107794",
+    ["Car7"]  = "129235040695348",
+    ["Car8"]  = "131100542718300",
+    ["Car9"]  = "132321111811051",
+    ["Car10"] = "126935589498772",
+    ["Car11"] = "80362695680079",
+    ["Car12"] = "97546942625129",
+    ["Car13"] = "112891411975011",
+    ["Car14"] = "75638163978874",
+    ["Car15"] = "97546942625129",
+    ["Car16"] = "71158203604487",
+    ["Car17"] = "132694860140953",
+    ["Car18"] = "83344620020319",
+    ["Car19"] = "138579119820087",
+    ["Car20"] = "116719541206004",
+    ["Car21"] = "94026463693744",
+    ["Car22"] = "85040913800778",
+    ["Car23"] = "112969039325805",
+    ["Car24"] = "126634224136626",
+    ["Car25"] = "81125038487604",
+    ["Car26"] = "93868763106186",
+    ["Car27"] = "129366716917946",
+    ["Car28"] = "122436859768901",
+    ["Car29"] = "115946421868832",
+    ["Car30"] = "104543648746618",
+    ["Car31"] = "136565410362916",
+    ["Car32"] = "116792736022199",
+    ["Car33"] = "130241990440579",
+    ["Car34"] = "119035735686043",
+    ["Car35"] = "132068269634363",
+    ["Car36"] = "89016076663074",
+    ["Car37"] = "83806329101173",
+    ["Car38"] = "137058080211001",
+    ["Car39"] = "79828807639787",
+    ["Car40"] = "125269961496015",
+    ["Car41"] = "139111721708519",
+    ["Car42"] = "70713214528468",
+    ["Car43"] = "82786447061148",
+    ["Car44"] = "134505076193249",
+    ["Car45"] = "105508380412372",
+    -- Car46 = no mesh (regular Part), skip thumbnail
+    ["Car47"] = "95686459489330",
+    ["Car48"] = "91534411122197",
+    ["Car49"] = "131039314426017",
+    ["Car50"] = "93050137848574",
+    ["Car51"] = "115484277550691",
+    ["Car52"] = "5918550231",
+    ["Car53"] = "103467991603728",
+    ["Car54"] = "84639568702831",
+    ["Car55"] = "118083709561576",
+    ["Car56"] = "140121436178414",
+    ["Car57"] = "123469320030830",
+    ["Car58"] = "74905098064755",
+    ["Car59"] = "110252179148935",
+    ["Car60"] = "95182435311562",
+    ["Car61"] = "88109308171720",
+    ["Car62"] = "87385161299883",
+    ["Car63"] = "94646532699196",
+    ["Car64"] = "104164872354511",
+    ["Car65"] = "138235415873443",
+    ["Car66"] = "102484034422180",
+    ["Car67"] = "124099900794686",
+    ["Car68"] = "77742951526690",
+    ["Car69"] = "73428282872460",
+    ["Car70"] = "108064288159576",
+    ["Car71"] = "134530398411830",
+    ["Car72"] = "137703479538833",
+    ["Car73"] = "87640643649210",
+    ["Car74"] = "105954369453774",
+    ["Car75"] = "128065278451851",
+    ["Car76"] = "126585364491830",
+    ["Car77"] = "76993910664036",
+    ["Car78"] = "71340455257310",
+    ["Car79"] = "131594019389205",
+}
+
+-- Rarity embed colors
+local rarityColors = {
+    ["Common"]    = 0x888888,
+    ["Rare"]      = 0x4444FF,
+    ["Epic"]      = 0xAA00FF,
+    ["Legendary"] = 0xFFD700,
+    ["Mythical"]  = 0xFF00FF,
+    ["Godly"]     = 0xFF4444,
+    ["Secret"]    = 0x222222,
+    ["Exclusive"] = 0x00FFFF,
+    ["Hacker"]    = 0x00FF00,
+}
+
 -- ── ANTI-AFK ──────────────────────────────────────────────────────────────
 local VirtualUser = game:GetService("VirtualUser")
 player.Idled:Connect(function()
@@ -39,6 +159,13 @@ local autoBuyEnabled  = false
 local autoBuyRunning  = false
 local carQueue        = {}
 local dropdownOpen    = false
+
+-- ── FILTER STATE ───────────────────────────────────────────────────────────
+local rarityFilter  = {}   -- e.g. {"Legendary", "Mythical"}
+local typeFilter    = {}   -- e.g. {"Sports", "Truck"}
+-- Buy-limit tables: carName → limit (number or nil = infinite)
+local carBuyLimit   = {}   -- carName → how many times to buy (nil = unlimited)
+local carBuyCount   = {}   -- carName → how many times bought so far
 
 local autoCashEnabled = false
 local autoCashRunning = false
@@ -150,6 +277,13 @@ local carData = {
     { name = "Lotusfire Exige",       display = "Lotusfire Exige (Hacker) - $8.5T"           },
 }
 
+-- Map from car display name → car key (Car1, Car2, …)
+-- Index position in carData matches the car number.
+local carNameToKey = {}
+for i, entry in ipairs(carData) do
+    carNameToKey[entry.name] = "Car" .. i
+end
+
 local function getDisplayForName(carName)
     for _, entry in ipairs(carData) do
         if entry.name == carName then return entry.display end
@@ -168,6 +302,9 @@ local function saveSettings()
             autoBuyEnabled    = autoBuyEnabled,
             autoCashEnabled   = autoCashEnabled,
             autoAdsEnabled    = autoAdsEnabled,
+            rarityFilter      = rarityFilter,
+            typeFilter        = typeFilter,
+            carBuyLimit       = carBuyLimit,
         }
         writefile(SAVE_FILE, httpService:JSONEncode(data))
     end)
@@ -190,7 +327,7 @@ screenGui.Name = "ObstacleRemover"
 screenGui.Parent = game.CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 820)
+frame.Size = UDim2.new(0, 260, 0, 1220)
 frame.Position = UDim2.new(0.4, 0, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 frame.Active = true
@@ -488,11 +625,186 @@ statusLabel.Parent = frame
 
 makeDivider(524)
 
+-- ── RARITY FILTER SECTION ──────────────────────────────────────────────────
+
+local rarityFilterLabel = Instance.new("TextLabel")
+rarityFilterLabel.Size = UDim2.new(0, 221, 0, 18)
+rarityFilterLabel.Position = UDim2.new(0, 20, 0, 531)
+rarityFilterLabel.BackgroundTransparency = 1
+rarityFilterLabel.Text = "Rarity Filter (Auto-Queue):"
+rarityFilterLabel.TextColor3 = Color3.new(1, 1, 1)
+rarityFilterLabel.TextXAlignment = Enum.TextXAlignment.Left
+rarityFilterLabel.Font = Enum.Font.GothamBold
+rarityFilterLabel.TextSize = 12
+rarityFilterLabel.ZIndex = 2
+rarityFilterLabel.Parent = frame
+
+-- Rarity toggle buttons — 3 per row
+local RARITIES = {
+    "Common", "Rare", "Epic",
+    "Legendary", "Mythical", "Godly",
+    "Secret", "Exclusive", "Hacker"
+}
+local rarityToggleButtons = {}
+local RARITY_BTN_W = 68
+local RARITY_BTN_H = 20
+local RARITY_COLS  = 3
+local RARITY_START_Y = 553
+
+for idx, rarity in ipairs(RARITIES) do
+    local col = (idx - 1) % RARITY_COLS
+    local row = math.floor((idx - 1) / RARITY_COLS)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, RARITY_BTN_W, 0, RARITY_BTN_H)
+    btn.Position = UDim2.new(0, 20 + col * (RARITY_BTN_W + 4), 0, RARITY_START_Y + row * (RARITY_BTN_H + 3))
+    btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Text = rarity
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 9
+    btn.ZIndex = 2
+    btn.Parent = frame
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = btn
+    end
+    rarityToggleButtons[rarity] = btn
+end
+
+-- Active rarity filter summary label
+local rarityActiveLabel = Instance.new("TextLabel")
+rarityActiveLabel.Size = UDim2.new(0, 221, 0, 14)
+rarityActiveLabel.Position = UDim2.new(0, 20, 0, RARITY_START_Y + 3 * (RARITY_BTN_H + 3) + 2)
+rarityActiveLabel.BackgroundTransparency = 1
+rarityActiveLabel.Text = "Rarity Filter: (none)"
+rarityActiveLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+rarityActiveLabel.TextXAlignment = Enum.TextXAlignment.Left
+rarityActiveLabel.Font = Enum.Font.Gotham
+rarityActiveLabel.TextSize = 9
+rarityActiveLabel.ZIndex = 2
+rarityActiveLabel.Parent = frame
+
+local RARITY_SECTION_END = RARITY_START_Y + 3 * (RARITY_BTN_H + 3) + 20  -- ~622
+
+-- Helper to refresh the rarity label and button colours (defined later, after rarityFilter exists)
+local function refreshRarityUI()
+    if #rarityFilter == 0 then
+        rarityActiveLabel.Text = "Rarity Filter: (none)"
+    else
+        rarityActiveLabel.Text = "Rarity Filter: " .. table.concat(rarityFilter, ", ")
+    end
+    for _, r in ipairs(RARITIES) do
+        local btn = rarityToggleButtons[r]
+        local active = false
+        for _, f in ipairs(rarityFilter) do
+            if f == r then active = true; break end
+        end
+        btn.BackgroundColor3 = active
+            and Color3.fromRGB(0, 130, 200)
+            or  Color3.fromRGB(55, 55, 55)
+    end
+end
+
+makeDivider(RARITY_SECTION_END)
+
+-- ── TYPE FILTER SECTION ────────────────────────────────────────────────────
+
+local TYPE_SECTION_Y = RARITY_SECTION_END + 7
+
+local typeFilterSectionLabel = Instance.new("TextLabel")
+typeFilterSectionLabel.Size = UDim2.new(0, 221, 0, 16)
+typeFilterSectionLabel.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y)
+typeFilterSectionLabel.BackgroundTransparency = 1
+typeFilterSectionLabel.Text = "Type Filter (Auto-Queue):"
+typeFilterSectionLabel.TextColor3 = Color3.new(1, 1, 1)
+typeFilterSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+typeFilterSectionLabel.Font = Enum.Font.GothamBold
+typeFilterSectionLabel.TextSize = 12
+typeFilterSectionLabel.ZIndex = 2
+typeFilterSectionLabel.Parent = frame
+
+-- Type text input
+local typeInputBox = Instance.new("TextBox")
+typeInputBox.Size = UDim2.new(0, 150, 0, 24)
+typeInputBox.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 20)
+typeInputBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+typeInputBox.BorderSizePixel = 0
+typeInputBox.TextColor3 = Color3.new(1, 1, 1)
+typeInputBox.PlaceholderText = "e.g. Sports"
+typeInputBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+typeInputBox.Text = ""
+typeInputBox.Font = Enum.Font.Gotham
+typeInputBox.TextSize = 11
+typeInputBox.ClearTextOnFocus = false
+typeInputBox.ZIndex = 2
+typeInputBox.Parent = frame
+do
+    local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,6); p.Parent = typeInputBox
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = typeInputBox
+end
+
+-- Add Type button
+local addTypeButton = Instance.new("TextButton")
+addTypeButton.Size = UDim2.new(0, 62, 0, 24)
+addTypeButton.Position = UDim2.new(0, 178, 0, TYPE_SECTION_Y + 20)
+addTypeButton.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+addTypeButton.TextColor3 = Color3.new(1, 1, 1)
+addTypeButton.Text = "+ Add"
+addTypeButton.Font = Enum.Font.Gotham
+addTypeButton.TextSize = 11
+addTypeButton.ZIndex = 2
+addTypeButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = addTypeButton
+end
+
+-- Active types label
+local typeActiveLabel = Instance.new("TextLabel")
+typeActiveLabel.Size = UDim2.new(0, 221, 0, 14)
+typeActiveLabel.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 48)
+typeActiveLabel.BackgroundTransparency = 1
+typeActiveLabel.Text = "Types: (none)"
+typeActiveLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+typeActiveLabel.TextXAlignment = Enum.TextXAlignment.Left
+typeActiveLabel.Font = Enum.Font.Gotham
+typeActiveLabel.TextSize = 9
+typeActiveLabel.TextTruncate = Enum.TextTruncate.AtEnd
+typeActiveLabel.ZIndex = 2
+typeActiveLabel.Parent = frame
+
+-- Clear Types button
+local clearTypesButton = Instance.new("TextButton")
+clearTypesButton.Size = UDim2.new(0, 221, 0, 22)
+clearTypesButton.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 66)
+clearTypesButton.BackgroundColor3 = Color3.fromRGB(140, 40, 40)
+clearTypesButton.TextColor3 = Color3.new(1, 1, 1)
+clearTypesButton.Text = "Clear Types"
+clearTypesButton.Font = Enum.Font.Gotham
+clearTypesButton.TextSize = 11
+clearTypesButton.ZIndex = 2
+clearTypesButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = clearTypesButton
+end
+
+local function refreshTypeUI()
+    if #typeFilter == 0 then
+        typeActiveLabel.Text = "Types: (none)"
+    else
+        typeActiveLabel.Text = "Types: " .. table.concat(typeFilter, ", ")
+    end
+end
+
+local TYPE_SECTION_END = TYPE_SECTION_Y + 96
+
+makeDivider(TYPE_SECTION_END)
+
 -- ── AUTO CASH SECTION ──────────────────────────────────────────────────────
+
+local AUTO_CASH_Y = TYPE_SECTION_END + 7
 
 local cashSectionLabel = Instance.new("TextLabel")
 cashSectionLabel.Size = UDim2.new(0, 221, 0, 18)
-cashSectionLabel.Position = UDim2.new(0, 20, 0, 531)
+cashSectionLabel.Position = UDim2.new(0, 20, 0, AUTO_CASH_Y)
 cashSectionLabel.BackgroundTransparency = 1
 cashSectionLabel.Text = "Auto Cash:"
 cashSectionLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -504,7 +816,7 @@ cashSectionLabel.Parent = frame
 
 local autoCashButton = Instance.new("TextButton")
 autoCashButton.Size = UDim2.new(0, 221, 0, 30)
-autoCashButton.Position = UDim2.new(0, 20, 0, 553)
+autoCashButton.Position = UDim2.new(0, 20, 0, AUTO_CASH_Y + 22)
 autoCashButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 autoCashButton.TextColor3 = Color3.new(1, 1, 1)
 autoCashButton.Text = "Auto Cash: OFF"
@@ -518,7 +830,7 @@ end
 
 local cashStatusLabel = Instance.new("TextLabel")
 cashStatusLabel.Size = UDim2.new(0, 221, 0, 20)
-cashStatusLabel.Position = UDim2.new(0, 20, 0, 591)
+cashStatusLabel.Position = UDim2.new(0, 20, 0, AUTO_CASH_Y + 60)
 cashStatusLabel.BackgroundTransparency = 1
 cashStatusLabel.Text = "Cash: Idle"
 cashStatusLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
@@ -528,13 +840,16 @@ cashStatusLabel.TextSize = 11
 cashStatusLabel.ZIndex = 2
 cashStatusLabel.Parent = frame
 
-makeDivider(618)
+local AUTO_CASH_DIVIDER = AUTO_CASH_Y + 87
+makeDivider(AUTO_CASH_DIVIDER)
 
 -- ── FLY SECTION ────────────────────────────────────────────────────────────
 
+local FLY_SECTION_Y = AUTO_CASH_DIVIDER + 7
+
 local flySectionLabel = Instance.new("TextLabel")
 flySectionLabel.Size = UDim2.new(0, 221, 0, 18)
-flySectionLabel.Position = UDim2.new(0, 20, 0, 625)
+flySectionLabel.Position = UDim2.new(0, 20, 0, FLY_SECTION_Y)
 flySectionLabel.BackgroundTransparency = 1
 flySectionLabel.Text = "Vehicle Fly:"
 flySectionLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -546,7 +861,7 @@ flySectionLabel.Parent = frame
 
 local flyButton = Instance.new("TextButton")
 flyButton.Size = UDim2.new(0, 221, 0, 30)
-flyButton.Position = UDim2.new(0, 20, 0, 647)
+flyButton.Position = UDim2.new(0, 20, 0, FLY_SECTION_Y + 22)
 flyButton.BackgroundColor3 = Color3.fromRGB(80, 40, 150)
 flyButton.TextColor3 = Color3.new(1, 1, 1)
 flyButton.Text = "🛸  Open Fly GUI"
@@ -558,13 +873,16 @@ do
     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = flyButton
 end
 
-makeDivider(685)
+local FLY_DIVIDER = FLY_SECTION_Y + 60
+makeDivider(FLY_DIVIDER)
 
 -- ── AUTO REMOVE ADS SECTION ────────────────────────────────────────────────
 
+local ADS_SECTION_Y = FLY_DIVIDER + 7
+
 local autoAdsButton = Instance.new("TextButton")
 autoAdsButton.Size = UDim2.new(0, 221, 0, 30)
-autoAdsButton.Position = UDim2.new(0, 20, 0, 695)
+autoAdsButton.Position = UDim2.new(0, 20, 0, ADS_SECTION_Y)
 autoAdsButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 autoAdsButton.TextColor3 = Color3.new(1, 1, 1)
 autoAdsButton.Text = "🚫  Auto Remove Ads: OFF"
@@ -579,7 +897,7 @@ end
 -- Rejoin
 local rejoinButton = Instance.new("TextButton")
 rejoinButton.Size = UDim2.new(0, 221, 0, 30)
-rejoinButton.Position = UDim2.new(0, 20, 0, 733)
+rejoinButton.Position = UDim2.new(0, 20, 0, ADS_SECTION_Y + 38)
 rejoinButton.BackgroundColor3 = Color3.fromRGB(150, 80, 20)
 rejoinButton.TextColor3 = Color3.new(1, 1, 1)
 rejoinButton.Text = "🔄  Rejoin"
@@ -591,16 +909,32 @@ do
     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = rejoinButton
 end
 
-makeDivider(771)
+local CLOSE_DIVIDER = ADS_SECTION_Y + 76
+makeDivider(CLOSE_DIVIDER)
 
 -- Close button
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 221, 0, 25)
-closeButton.Position = UDim2.new(0, 20, 0, 781)
+closeButton.Position = UDim2.new(0, 20, 0, CLOSE_DIVIDER + 6)
 closeButton.Text = "Close"
 closeButton.Font = Enum.Font.Gotham
 closeButton.TextSize = 13
 closeButton.Parent = frame
+
+-- Webhook Notify toggle
+local webhookButton = Instance.new("TextButton")
+webhookButton.Size = UDim2.new(0, 221, 0, 30)
+webhookButton.Position = UDim2.new(0, 20, 0, CLOSE_DIVIDER + 39)
+webhookButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+webhookButton.TextColor3 = Color3.new(1, 1, 1)
+webhookButton.Text = "Webhook Notify: OFF"
+webhookButton.Font = Enum.Font.Gotham
+webhookButton.TextSize = 12
+webhookButton.ZIndex = 2
+webhookButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = webhookButton
+end
 
 -- ── STATUS HELPERS ─────────────────────────────────────────────────────────
 
@@ -622,7 +956,7 @@ local function rebuildQueueUI()
     end
     for i, carName in ipairs(carQueue) do
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 26)
+        row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundTransparency = i % 2 == 0 and 0 or 1
         row.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
         row.BorderSizePixel = 0
@@ -630,9 +964,10 @@ local function rebuildQueueUI()
         row.ZIndex = 3
         row.Parent = queueScroll
 
+        -- Car name label (top half of row)
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -30, 1, 0)
-        lbl.Position = UDim2.new(0, 6, 0, 0)
+        lbl.Size = UDim2.new(1, -54, 0, 18)
+        lbl.Position = UDim2.new(0, 6, 0, 2)
         lbl.BackgroundTransparency = 1
         lbl.Text = "#" .. i .. "  " .. getDisplayForName(carName)
         lbl.TextColor3 = Color3.new(1, 1, 1)
@@ -643,9 +978,66 @@ local function rebuildQueueUI()
         lbl.ZIndex = 4
         lbl.Parent = row
 
+        -- Buy count display
+        local buyCountLbl = Instance.new("TextLabel")
+        buyCountLbl.Size = UDim2.new(0, 80, 0, 14)
+        buyCountLbl.Position = UDim2.new(0, 6, 0, 21)
+        buyCountLbl.BackgroundTransparency = 1
+        local limit = carBuyLimit[carName]
+        local count = carBuyCount[carName] or 0
+        if limit then
+            buyCountLbl.Text = "Bought: " .. count .. "/" .. limit
+            buyCountLbl.TextColor3 = count >= limit
+                and Color3.fromRGB(255, 80, 80)
+                or  Color3.fromRGB(100, 220, 100)
+        else
+            buyCountLbl.Text = "Limit: ∞"
+            buyCountLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+        end
+        buyCountLbl.Font = Enum.Font.Gotham
+        buyCountLbl.TextSize = 9
+        buyCountLbl.TextXAlignment = Enum.TextXAlignment.Left
+        buyCountLbl.ZIndex = 4
+        buyCountLbl.Parent = row
+
+        -- Limit text box (bottom half, small)
+        local limitBox = Instance.new("TextBox")
+        limitBox.Size = UDim2.new(0, 38, 0, 14)
+        limitBox.Position = UDim2.new(0, 90, 0, 21)
+        limitBox.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        limitBox.BorderSizePixel = 0
+        limitBox.TextColor3 = Color3.new(1, 1, 1)
+        limitBox.PlaceholderText = "Limit"
+        limitBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+        limitBox.Text = limit and tostring(limit) or ""
+        limitBox.Font = Enum.Font.Gotham
+        limitBox.TextSize = 9
+        limitBox.ClearTextOnFocus = false
+        limitBox.ZIndex = 5
+        limitBox.Parent = row
+        do
+            local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,3); c.Parent = limitBox
+        end
+
+        -- Confirm limit button
+        local setBtn = Instance.new("TextButton")
+        setBtn.Size = UDim2.new(0, 22, 0, 14)
+        setBtn.Position = UDim2.new(0, 132, 0, 21)
+        setBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
+        setBtn.TextColor3 = Color3.new(1, 1, 1)
+        setBtn.Text = "✓"
+        setBtn.Font = Enum.Font.GothamBold
+        setBtn.TextSize = 9
+        setBtn.ZIndex = 5
+        setBtn.Parent = row
+        do
+            local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,3); c.Parent = setBtn
+        end
+
+        -- Remove button (×)
         local xBtn = Instance.new("TextButton")
-        xBtn.Size = UDim2.new(0, 22, 0, 22)
-        xBtn.Position = UDim2.new(1, -26, 0.5, -11)
+        xBtn.Size = UDim2.new(0, 22, 0, 32)
+        xBtn.Position = UDim2.new(1, -26, 0.5, -16)
         xBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
         xBtn.TextColor3 = Color3.new(1, 1, 1)
         xBtn.Text = "✕"
@@ -657,7 +1049,21 @@ local function rebuildQueueUI()
             local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = xBtn
         end
 
+        -- Wire up set-limit button
         local capturedName = carName
+        setBtn.MouseButton1Click:Connect(function()
+            local val = tonumber(limitBox.Text)
+            if val and val >= 1 then
+                carBuyLimit[capturedName] = math.floor(val)
+            else
+                carBuyLimit[capturedName] = nil
+                limitBox.Text = ""
+            end
+            saveSettings()
+            rebuildQueueUI()
+        end)
+
+        -- Wire up remove button
         xBtn.MouseButton1Click:Connect(function()
             for j, n in ipairs(carQueue) do
                 if n == capturedName then
@@ -665,11 +1071,13 @@ local function rebuildQueueUI()
                     break
                 end
             end
+            carBuyLimit[capturedName] = nil
+            carBuyCount[capturedName] = nil
             rebuildQueueUI()
             saveSettings()
         end)
     end
-    queueScroll.CanvasSize = UDim2.new(0, 0, 0, #carQueue * 26)
+    queueScroll.CanvasSize = UDim2.new(0, 0, 0, #carQueue * 38)
 end
 
 -- ── CORE FUNCTIONS ─────────────────────────────────────────────────────────
@@ -711,6 +1119,35 @@ end
 
 -- ── AUTO BUY FUNCTIONS ─────────────────────────────────────────────────────
 
+local function isInQueue(name)
+    for _, n in ipairs(carQueue) do
+        if n == name then return true end
+    end
+    return false
+end
+
+-- Read the short car name from a spawned slot via NameLabel
+local function getCarNameFromSlot(slot)
+    local ok, label = pcall(function()
+        return slot:FindFirstChild("nameEffect"):FindFirstChild("PartName"):FindFirstChild("NameLabel")
+    end)
+    if ok and label and label:IsA("TextLabel") then
+        return label.Text
+    end
+    return nil
+end
+
+-- Read the Type StringValue from a spawned slot
+local function getCarTypeFromSlot(slot)
+    local t = ""
+    pcall(function()
+        local sv = slot:FindFirstChild("nameEffect") and
+                   slot:FindFirstChild("nameEffect"):FindFirstChild("Type")
+        if sv and sv:IsA("StringValue") then t = sv.Value end
+    end)
+    return t
+end
+
 local function findCarInWorld(carName)
     local spawnedCars = workspace:FindFirstChild("SpawnedCars")
     if not spawnedCars then return nil end
@@ -725,13 +1162,86 @@ local function findCarInWorld(carName)
     return nil
 end
 
+-- Scan SpawnedCars and auto-add any rarity/type filter matches to carQueue.
+-- Called each tick so new spawns get picked up immediately.
+local function injectFilterMatches()
+    local spawnedCars = workspace:FindFirstChild("SpawnedCars")
+    if not spawnedCars then return end
+
+    for _, slot in pairs(spawnedCars:GetChildren()) do
+        local carName = getCarNameFromSlot(slot)
+        if carName and not isInQueue(carName) then
+            local displayStr = getDisplayForName(carName)
+            local rarity     = displayStr:match("%((.-)%)") or ""
+            local carType    = getCarTypeFromSlot(slot)
+
+            local matched = false
+            -- Check rarity filter
+            for _, r in ipairs(rarityFilter) do
+                if r == rarity then matched = true; break end
+            end
+            -- Check type filter
+            if not matched then
+                for _, t in ipairs(typeFilter) do
+                    if t == carType then matched = true; break end
+                end
+            end
+
+            if matched then
+                table.insert(carQueue, carName)
+                rebuildQueueUI()
+                saveSettings()
+            end
+        end
+    end
+end
+
 local function findHighestPriorityCar()
+    -- Inject filter-matched cars before scanning
+    injectFilterMatches()
+
+    local spawnedCars = workspace:FindFirstChild("SpawnedCars")
+
+    -- Priority 1: explicit carQueue entries (in order)
     for _, carName in ipairs(carQueue) do
         local model = findCarInWorld(carName)
         if model then
             return carName, model
         end
     end
+
+    -- Priority 2: first rarity-filter match in SpawnedCars not in queue
+    -- (injectFilterMatches already added them, but as fallback scan live)
+    if spawnedCars and #rarityFilter > 0 then
+        for _, slot in pairs(spawnedCars:GetChildren()) do
+            local carName = getCarNameFromSlot(slot)
+            if carName then
+                local displayStr = getDisplayForName(carName)
+                local rarity     = displayStr:match("%((.-)%)") or ""
+                for _, r in ipairs(rarityFilter) do
+                    if r == rarity then
+                        return carName, slot
+                    end
+                end
+            end
+        end
+    end
+
+    -- Priority 3: first type-filter match in SpawnedCars
+    if spawnedCars and #typeFilter > 0 then
+        for _, slot in pairs(spawnedCars:GetChildren()) do
+            local carName = getCarNameFromSlot(slot)
+            if carName then
+                local carType = getCarTypeFromSlot(slot)
+                for _, t in ipairs(typeFilter) do
+                    if t == carType then
+                        return carName, slot
+                    end
+                end
+            end
+        end
+    end
+
     return nil, nil
 end
 
@@ -1166,7 +1676,25 @@ local function performAutoBuy(carName, carModel)
     flyCarToSpot()
 
     task.wait(2)
-    setStatus("Done! Scanning...", Color3.fromRGB(80, 220, 100))
+
+    -- ── Buy-limit tracking ──────────────────────────────────────────────────
+    carBuyCount[carName] = (carBuyCount[carName] or 0) + 1
+    local limit = carBuyLimit[carName]
+    if limit and carBuyCount[carName] >= limit then
+        -- Remove from queue — limit reached
+        for j, n in ipairs(carQueue) do
+            if n == carName then table.remove(carQueue, j); break end
+        end
+        carBuyLimit[carName] = nil
+        carBuyCount[carName] = nil
+        rebuildQueueUI()
+        saveSettings()
+        setStatus("Limit reached for " .. carName .. "! Removed.", Color3.fromRGB(80, 220, 100))
+    else
+        rebuildQueueUI()  -- refresh count display
+        setStatus("Done! Scanning...", Color3.fromRGB(80, 220, 100))
+    end
+
     task.wait(2)
     setStatus("Scanning...", Color3.fromRGB(160, 160, 160))
     autoBuyRunning = false
@@ -1395,6 +1923,142 @@ local function suppressAds()
     end)
 end
 
+-- ── WEBHOOK FUNCTIONS ─────────────────────────────────────────────────────
+
+-- Parse the rarity string out of a display string like "Car Name (Rarity) - $Price"
+local function parseRarityFromDisplay(displayStr)
+    return displayStr:match("%((.-)%)")
+end
+
+-- Send a Discord embed for a spotted car
+local function sendWebhookNotification(carDisplayName, carKey)
+    if not webhookEnabled then return end
+    if WEBHOOK_URL == "YOUR_WEBHOOK_HERE" then return end
+
+    local rarity   = parseRarityFromDisplay(carDisplayName) or "Unknown"
+    local color    = rarityColors[rarity] or 0x888888
+    local meshId   = carIconMap[carKey]
+    local thumbUrl = meshId and (
+        "https://www.roblox.com/asset-thumbnail/image?assetId="
+        .. meshId .. "&width=420&height=420&format=png"
+    ) or nil
+
+    local embedFields = {
+        title       = "🚗 Car Spotted!",
+        description = carDisplayName,
+        color       = color,
+        footer      = { text = "Spotted by " .. player.Name },
+    }
+    if thumbUrl then
+        embedFields.thumbnail = { url = thumbUrl }
+    end
+
+    local body = httpService:JSONEncode({ embeds = { embedFields } })
+    pcall(function()
+        request({
+            Url     = WEBHOOK_URL,
+            Method  = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body    = body,
+        })
+    end)
+end
+
+-- Check whether a spawned car instance matches any active filter.
+-- Returns the car's display name if it matches, nil otherwise.
+local function getWebhookMatchDisplay(slot)
+    -- Get display name from the in-world NameLabel
+    local ok, label = pcall(function()
+        return slot:FindFirstChild("nameEffect"):FindFirstChild("PartName"):FindFirstChild("NameLabel")
+    end)
+    if not (ok and label and label:IsA("TextLabel")) then return nil end
+    local carName = label.Text  -- this is the short name, e.g. "Porcha Cayana"
+
+    -- Get the display string from carData
+    local displayStr = getDisplayForName(carName)
+    local rarity     = parseRarityFromDisplay(displayStr) or ""
+
+    -- Get type from nameEffect.Type StringValue
+    local carType = ""
+    pcall(function()
+        local typeVal = slot:FindFirstChild("nameEffect") and
+                        slot:FindFirstChild("nameEffect"):FindFirstChild("Type")
+        if typeVal and typeVal:IsA("StringValue") then
+            carType = typeVal.Value
+        end
+    end)
+
+    -- Determine whether ANY active filter matches (empty table = matches all)
+    local hasCarsFilter     = #webhookFilterCars > 0
+    local hasRarityFilter   = #webhookFilterRarities > 0
+    local hasTypeFilter     = #webhookFilterTypes > 0
+    local anyFilterActive   = hasCarsFilter or hasRarityFilter or hasTypeFilter
+
+    if not anyFilterActive then
+        return displayStr  -- no filters: always match
+    end
+
+    -- Car-name filter
+    if hasCarsFilter then
+        for _, n in ipairs(webhookFilterCars) do
+            if n == carName then return displayStr end
+        end
+    end
+    -- Rarity filter
+    if hasRarityFilter then
+        for _, r in ipairs(webhookFilterRarities) do
+            if r == rarity then return displayStr end
+        end
+    end
+    -- Type filter
+    if hasTypeFilter then
+        for _, t in ipairs(webhookFilterTypes) do
+            if t == carType then return displayStr end
+        end
+    end
+
+    return nil
+end
+
+-- Scan all cars in SpawnedCars and fire webhook for any new matches.
+local function scanSpawnedCarsForWebhook()
+    if not webhookEnabled then return end
+    local spawnedCars = workspace:FindFirstChild("SpawnedCars")
+    if not spawnedCars then return end
+
+    for _, slot in pairs(spawnedCars:GetChildren()) do
+        if not webhookSeen[slot] then
+            local displayStr = getWebhookMatchDisplay(slot)
+            if displayStr then
+                webhookSeen[slot] = true
+                -- Resolve car key from display string via carNameToKey
+                -- Extract the short name from display e.g. "Porcha Cayana (Legendary)…"
+                local shortName = displayStr:match("^(.-)%s*%(")
+                local carKey    = shortName and carNameToKey[shortName] or nil
+                -- Also try the model's own Name property (Car1, Car2…) as fallback
+                if not carKey then
+                    pcall(function()
+                        local modelName = slot.Name  -- "Car1", "Car2", etc.
+                        if carIconMap[modelName] or modelName:match("^Car%d+$") then
+                            carKey = modelName
+                        end
+                    end)
+                end
+                task.spawn(function()
+                    sendWebhookNotification(displayStr, carKey or "")
+                end)
+            end
+        end
+    end
+
+    -- Clean up seen table entries whose instances have been removed
+    for inst in pairs(webhookSeen) do
+        if not inst.Parent then
+            webhookSeen[inst] = nil
+        end
+    end
+end
+
 -- ── CONNECTIONS ────────────────────────────────────────────────────────────
 
 -- Speed slider
@@ -1474,10 +2138,54 @@ addQueueButton.MouseButton1Click:Connect(function()
     end)
 end)
 
+-- Rarity toggle buttons
+for _, rarity in ipairs(RARITIES) do
+    rarityToggleButtons[rarity].MouseButton1Click:Connect(function()
+        -- Toggle in rarityFilter
+        local found = false
+        for i, r in ipairs(rarityFilter) do
+            if r == rarity then
+                table.remove(rarityFilter, i)
+                found = true
+                break
+            end
+        end
+        if not found then
+            table.insert(rarityFilter, rarity)
+        end
+        refreshRarityUI()
+        saveSettings()
+    end)
+end
+
+-- Add Type button
+addTypeButton.MouseButton1Click:Connect(function()
+    local t = typeInputBox.Text:match("^%s*(.-)%s*$")  -- trim whitespace
+    if t == "" then return end
+    -- Prevent duplicates
+    for _, existing in ipairs(typeFilter) do
+        if existing == t then
+            typeInputBox.Text = ""
+            return
+        end
+    end
+    table.insert(typeFilter, t)
+    typeInputBox.Text = ""
+    refreshTypeUI()
+    saveSettings()
+end)
+
+-- Clear Types button
+clearTypesButton.MouseButton1Click:Connect(function()
+    typeFilter = {}
+    refreshTypeUI()
+    saveSettings()
+end)
+
 -- Auto Buy toggle
 autoBuyButton.MouseButton1Click:Connect(function()
-    if #carQueue == 0 then
-        setStatus("Add cars to the queue first!", Color3.fromRGB(255, 100, 100))
+    if #carQueue == 0 and #rarityFilter == 0 and #typeFilter == 0 then
+        setStatus("Add cars or set a filter first!", Color3.fromRGB(255, 100, 100))
         task.delay(2, function() setStatus("Idle") end)
         return
     end
@@ -1557,6 +2265,20 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
+-- Webhook Notify toggle
+webhookButton.MouseButton1Click:Connect(function()
+    webhookEnabled = not webhookEnabled
+    if webhookEnabled then
+        webhookButton.Text = "Webhook Notify: ON"
+        webhookButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
+    else
+        webhookButton.Text = "Webhook Notify: OFF"
+        webhookButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        -- Clear seen table so re-enabling will re-detect current cars
+        webhookSeen = {}
+    end
+end)
+
 -- ── LIVE AD INTERCEPTION ───────────────────────────────────────────────────
 
 -- Catch FavoriteItem / PromptSetFavorite the instant it appears in CoreGui.
@@ -1634,7 +2356,11 @@ end)
 
 task.spawn(function()
     while task.wait(0.5) do
-        -- Auto Buy
+        -- Always inject rarity/type filter matches into the queue when active
+        if #rarityFilter > 0 or #typeFilter > 0 then
+            injectFilterMatches()
+        end
+        -- Auto Buy — trigger if queue has entries (filters may have just filled it)
         if autoBuyEnabled and not autoBuyRunning and #carQueue > 0 then
             local carName, carModel = findHighestPriorityCar()
             if carName and carModel then
@@ -1648,6 +2374,8 @@ task.spawn(function()
         if autoAdsEnabled then
             suppressAds()
         end
+        -- Webhook car scanner
+        scanSpawnedCarsForWebhook()
     end
 end)
 
@@ -1674,7 +2402,22 @@ task.spawn(function()
         rebuildQueueUI()
     end
 
-    if saved.autoBuyEnabled and #carQueue > 0 then
+    if saved.rarityFilter and type(saved.rarityFilter) == "table" then
+        rarityFilter = saved.rarityFilter
+        refreshRarityUI()
+    end
+
+    if saved.typeFilter and type(saved.typeFilter) == "table" then
+        typeFilter = saved.typeFilter
+        refreshTypeUI()
+    end
+
+    if saved.carBuyLimit and type(saved.carBuyLimit) == "table" then
+        carBuyLimit = saved.carBuyLimit
+        rebuildQueueUI()  -- re-render rows with restored limits
+    end
+
+    if saved.autoBuyEnabled and (#carQueue > 0 or #rarityFilter > 0 or #typeFilter > 0) then
         autoBuyEnabled = true
         autoBuyButton.Text = "Auto Buy: ON"
         autoBuyButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
