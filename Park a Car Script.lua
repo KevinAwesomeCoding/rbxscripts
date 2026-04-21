@@ -11,7 +11,7 @@ local player = players.LocalPlayer
 
 -- ── WEBHOOK SETUP ─────────────────────────────────────────────────────────
 
-local WEBHOOK_URL    = "YOUR_WEBHOOK_HERE"
+local WEBHOOK_URL    = "https://discord.com/api/webhooks/1496243355850641459/nD85hqwwBRbuDresxaZr1nEjV1wDJJHe08fLb5oVmCp_hyxKgqyHYYz2ArjoLQVnqkRn"
 local webhookEnabled = false
 
 -- ── WEBHOOK FILTER TABLES (edit these to control notifications) ───────────
