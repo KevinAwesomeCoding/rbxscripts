@@ -11,7 +11,7 @@ local player = players.LocalPlayer
 
 -- ── WEBHOOK SETUP ─────────────────────────────────────────────────────────
 
-local WEBHOOK_URL    = "YOUR_WEBHOOK_HERE"
+local WEBHOOK_URL    = "https://discord.com/api/webhooks/1496243355850641459/nD85hqwwBRbuDresxaZr1nEjV1wDJJHe08fLb5oVmCp_hyxKgqyHYYz2ArjoLQVnqkRn"
 local webhookEnabled = false
 
 -- ── WEBHOOK FILTER TABLES (edit these to control notifications) ───────────
@@ -1279,26 +1279,6 @@ local ARRIVE_DIST  = 1.5
 local FLY_VEL_NAME = "AutoBuyFlyVelocity"
 local FLY_GYRO_NAME= "AutoBuyFlyGyro"
 
--- Returns the Cash Model for a given stage number.
--- Stage 1: Cash is a direct child of 1Stage (NOT inside Transition).
--- Stage 2+: Cash is inside Transition.
-local function getCashPart(stageNum)
-    local stageFolder = workspace.Stages[tostring(stageNum) .. "Stage"]
-    if not stageFolder then return nil end
-    local trans = stageFolder:FindFirstChild("Transition")
-    if trans then
-        local cashInTrans = trans:FindFirstChild("Cash")
-        if cashInTrans then return cashInTrans end
-    end
-    -- Fallback: direct child (Stage 1 layout)
-    return stageFolder:FindFirstChild("Cash")
-end
-
--- Returns the current stage number from the player attribute (default 1)
-local function getCurrentStage()
-    return player:GetAttribute("CurrentStage") or 1
-end
-
 local function setupFlyHandlers(rootPart)
     local ev = rootPart:FindFirstChild(FLY_VEL_NAME)
     local eg = rootPart:FindFirstChild(FLY_GYRO_NAME)
@@ -1444,20 +1424,13 @@ local function flyCarToSpot()
     enableNoClip(char)
     local vel, gyro = setupFlyHandlers(rootPart)
 
-    -- Waypoint 1: Cash transition (stage-aware)
-    local currentStage = getCurrentStage()
+    -- Waypoint 1: Cash transition
     local cashPos
     local ok1 = pcall(function()
-        local cashModel = getCashPart(currentStage)
-        if cashModel then
-            -- Target the first child BasePart (the invisible trigger), or the model CFrame
-            local triggerPart = cashModel:FindFirstChildWhichIsA("BasePart")
-            local pos = triggerPart and triggerPart.Position or cashModel:GetModelCFrame().Position
-            cashPos = pos + Vector3.new(0, 25, 0)  -- fly HIGH above (Y≈25-30) to clear obstacles
-        end
+        cashPos = workspace.Stages["1Stage"].Transition.Cash.Position + Vector3.new(0, 4, 0)
     end)
     if ok1 and cashPos then
-        setStatus("Flying to Stage " .. currentStage .. " Cash...", Color3.fromRGB(255, 200, 50))
+        setStatus("Flying to Cash...", Color3.fromRGB(255, 200, 50))
         flyToPosition(rootPart, vel, gyro, cashPos, 20)
         task.wait(0.3)
     end
@@ -1467,12 +1440,11 @@ local function flyCarToSpot()
     -- vehicleOffset corrects for seat position so the car body lands on center.
     local parkPos
     local ok2 = pcall(function()
-        local stageKey = tostring(currentStage) .. "Stage"
-        local hit = workspace.Stages[stageKey].STAGE.ParkSpot.Hit
+        local hit = workspace.Stages["1Stage"].STAGE.ParkSpot.Hit
         parkPos = hit.Position + vehicleOffset + Vector3.new(0, 2, 0)
     end)
     if ok2 and parkPos then
-        setStatus("Flying to ParkSpot (Stage " .. currentStage .. ")...", Color3.fromRGB(255, 200, 50))
+        setStatus("Flying to ParkSpot...", Color3.fromRGB(255, 200, 50))
         flyToPosition(rootPart, vel, gyro, parkPos, 20)
     else
         setStatus("ParkSpot not found!", Color3.fromRGB(255, 80, 80))
@@ -1503,8 +1475,7 @@ local function flyCarToSpot()
     -- Override the car's orientation so its LookVector matches Hit.CFrame.LookVector
     -- (= +X in Stage 1). This gives alignment_score = 1.0.
     pcall(function()
-        local stageKey = tostring(currentStage) .. "Stage"
-        local hit = workspace.Stages[stageKey].STAGE.ParkSpot.Hit
+        local hit = workspace.Stages["1Stage"].STAGE.ParkSpot.Hit
 
         -- Build a CFrame at the park position with Hit's exact rotation
         local hitRotOnly = hit.CFrame - hit.CFrame.Position  -- strip translation
