@@ -1560,38 +1560,34 @@ end)
 -- ── LIVE AD INTERCEPTION ───────────────────────────────────────────────────
 
 -- Catch FavoriteItem / PromptSetFavorite the instant it appears in CoreGui.
--- The game calls MarketplaceService:PromptSetFavorite on join (and possibly
--- on other events). The CoreGui dialog contains a "No" TextButton — we fire
--- a click on it immediately so the player never sees it.
-game.CoreGui.DescendantAdded:Connect(function(obj)
+-- Strategy: whenever ANYTHING is added to CoreGui, wait 0.15 s for the full
+-- dialog tree to build, then do a broad scan of ALL CoreGui descendants for a
+-- TextButton whose text is "No" that also has a "Yes" sibling — confirming it
+-- is a two-button confirmation prompt, not some unrelated game UI.
+local _favoriteDebounce = false
+game.CoreGui.DescendantAdded:Connect(function()
     if not autoAdsEnabled then return end
-    task.wait()  -- let the dialog finish constructing
-    if not obj or not obj.Parent then return end
-    pcall(function()
-        -- Walk up to find a container whose name suggests a prompt/dialog
-        local cur = obj
-        local isFavoriteDialog = false
-        for _ = 1, 6 do
-            if not cur then break end
-            local n = cur.Name:lower()
-            if n:find("favor") or n:find("promptset") or n:find("dialog") or n:find("modal") then
-                isFavoriteDialog = true
-                break
+    if _favoriteDebounce then return end
+    task.spawn(function()
+        task.wait(0.15)
+        if not autoAdsEnabled then return end
+        pcall(function()
+            for _, btn in ipairs(game.CoreGui:GetDescendants()) do
+                if btn:IsA("TextButton") and btn.Text == "No" then
+                    local parent = btn.Parent
+                    if parent then
+                        for _, sibling in ipairs(parent:GetChildren()) do
+                            if sibling:IsA("TextButton") and sibling.Text == "Yes" then
+                                _favoriteDebounce = true
+                                btn.MouseButton1Click:Fire()
+                                task.delay(1, function() _favoriteDebounce = false end)
+                                return
+                            end
+                        end
+                    end
+                end
             end
-            cur = cur.Parent
-        end
-        if not isFavoriteDialog and not (obj:IsA("ScreenGui") and obj.Name:lower():find("favor")) then
-            return
-        end
-        -- Search for the "No" button in the dialog subtree
-        local root = obj:IsA("ScreenGui") and obj or obj.Parent
-        if not root then return end
-        for _, btn in pairs(root:GetDescendants()) do
-            if btn:IsA("TextButton") and btn.Text == "No" then
-                btn.MouseButton1Click:Fire()
-                return
-            end
-        end
+        end)
     end)
 end)
 
