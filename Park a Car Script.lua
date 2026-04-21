@@ -849,7 +849,22 @@ do
     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = flyButton
 end
 
-local FLY_DIVIDER = FLY_SECTION_Y + 60
+-- Fly to Parking Spot (manual trigger)
+local flyToSpotButton = Instance.new("TextButton")
+flyToSpotButton.Size = UDim2.new(0, 221, 0, 30)
+flyToSpotButton.Position = UDim2.new(0, 20, 0, FLY_SECTION_Y + 57)
+flyToSpotButton.BackgroundColor3 = Color3.fromRGB(0, 110, 80)
+flyToSpotButton.TextColor3 = Color3.new(1, 1, 1)
+flyToSpotButton.Text = "🛸  Fly to Parking Spot"
+flyToSpotButton.Font = Enum.Font.Gotham
+flyToSpotButton.TextSize = 13
+flyToSpotButton.ZIndex = 2
+flyToSpotButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = flyToSpotButton
+end
+
+local FLY_DIVIDER = FLY_SECTION_Y + 97
 makeDivider(FLY_DIVIDER)
 
 -- ── AUTO REMOVE ADS SECTION ────────────────────────────────────────────────
@@ -2349,6 +2364,22 @@ flyButton.MouseButton1Click:Connect(function()
             flyButton.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
             warn("Fly GUI load error: " .. tostring(err))
         end
+    end)
+end)
+
+-- Fly to Parking Spot — manually triggers flyCarToSpot()
+flyToSpotButton.MouseButton1Click:Connect(function()
+    -- Debounce: disable while flying so it can't be double-clicked
+    flyToSpotButton.Text = "Flying..."
+    flyToSpotButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    flyToSpotButton.Active = false
+
+    task.spawn(function()
+        flyCarToSpot()
+        -- Re-enable once flyCarToSpot returns
+        flyToSpotButton.Text = "🛸  Fly to Parking Spot"
+        flyToSpotButton.BackgroundColor3 = Color3.fromRGB(0, 110, 80)
+        flyToSpotButton.Active = true
     end)
 end)
 
