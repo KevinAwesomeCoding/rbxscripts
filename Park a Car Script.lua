@@ -161,8 +161,9 @@ local carQueue        = {}
 local dropdownOpen    = false
 
 -- ── FILTER STATE ───────────────────────────────────────────────────────────
-local rarityFilter  = {}   -- e.g. {"Legendary", "Mythical"}
-local typeFilter    = {}   -- e.g. {"Sports", "Truck"}
+local rarityFilter   = {}   -- e.g. {"Legendary", "Mythical"}
+local pendingCarTypes = {}  -- set of selected types for next queue addition, e.g. {"Gold","Rainbow"}
+                            -- empty = Any (match all types)
 -- Buy-limit tables: carName → limit (number or nil = infinite)
 local carBuyLimit   = {}   -- carName → how many times to buy (nil = unlimited)
 local carBuyCount   = {}   -- carName → how many times bought so far
@@ -303,7 +304,6 @@ local function saveSettings()
             autoCashEnabled   = autoCashEnabled,
             autoAdsEnabled    = autoAdsEnabled,
             rarityFilter      = rarityFilter,
-            typeFilter        = typeFilter,
             carBuyLimit       = carBuyLimit,
         }
         writefile(SAVE_FILE, httpService:JSONEncode(data))
@@ -707,6 +707,8 @@ end
 makeDivider(RARITY_SECTION_END)
 
 -- ── TYPE FILTER SECTION ────────────────────────────────────────────────────
+-- Type is per-queue-entry, selected before clicking "+ Add to Priority Queue".
+-- Multiple types can be selected at once. "Any" clears all specific types.
 
 local TYPE_SECTION_Y = RARITY_SECTION_END + 7
 
@@ -714,7 +716,7 @@ local typeFilterSectionLabel = Instance.new("TextLabel")
 typeFilterSectionLabel.Size = UDim2.new(0, 221, 0, 16)
 typeFilterSectionLabel.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y)
 typeFilterSectionLabel.BackgroundTransparency = 1
-typeFilterSectionLabel.Text = "Type Filter (Auto-Queue):"
+typeFilterSectionLabel.Text = "Car Type (for next queue entry):"
 typeFilterSectionLabel.TextColor3 = Color3.new(1, 1, 1)
 typeFilterSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
 typeFilterSectionLabel.Font = Enum.Font.GothamBold
@@ -722,79 +724,53 @@ typeFilterSectionLabel.TextSize = 12
 typeFilterSectionLabel.ZIndex = 2
 typeFilterSectionLabel.Parent = frame
 
--- Type text input
-local typeInputBox = Instance.new("TextBox")
-typeInputBox.Size = UDim2.new(0, 150, 0, 24)
-typeInputBox.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 20)
-typeInputBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-typeInputBox.BorderSizePixel = 0
-typeInputBox.TextColor3 = Color3.new(1, 1, 1)
-typeInputBox.PlaceholderText = "e.g. Sports"
-typeInputBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
-typeInputBox.Text = ""
-typeInputBox.Font = Enum.Font.Gotham
-typeInputBox.TextSize = 11
-typeInputBox.ClearTextOnFocus = false
-typeInputBox.ZIndex = 2
-typeInputBox.Parent = frame
-do
-    local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,6); p.Parent = typeInputBox
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = typeInputBox
+-- 5 toggle buttons: Any, Gold, Diamond, Rainbow, Galaxy
+-- Any = no type filter (matches all). Specific types can be multi-selected.
+local CAR_TYPES    = { "Any", "Gold", "Diamond", "Rainbow", "Galaxy" }
+local typeRadioButtons = {}
+local TYPE_BTN_W   = 39
+local TYPE_BTN_H   = 22
+
+for idx, typeName in ipairs(CAR_TYPES) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, TYPE_BTN_W, 0, TYPE_BTN_H)
+    btn.Position = UDim2.new(0, 20 + (idx - 1) * (TYPE_BTN_W + 4), 0, TYPE_SECTION_Y + 20)
+    -- "Any" is highlighted by default (pendingCarTypes is empty = any)
+    btn.BackgroundColor3 = idx == 1
+        and Color3.fromRGB(0, 130, 200)
+        or  Color3.fromRGB(55, 55, 55)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Text = typeName
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 9
+    btn.ZIndex = 2
+    btn.Parent = frame
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = btn
+    end
+    typeRadioButtons[typeName] = btn
 end
 
--- Add Type button
-local addTypeButton = Instance.new("TextButton")
-addTypeButton.Size = UDim2.new(0, 62, 0, 24)
-addTypeButton.Position = UDim2.new(0, 178, 0, TYPE_SECTION_Y + 20)
-addTypeButton.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
-addTypeButton.TextColor3 = Color3.new(1, 1, 1)
-addTypeButton.Text = "+ Add"
-addTypeButton.Font = Enum.Font.Gotham
-addTypeButton.TextSize = 11
-addTypeButton.ZIndex = 2
-addTypeButton.Parent = frame
-do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = addTypeButton
-end
-
--- Active types label
-local typeActiveLabel = Instance.new("TextLabel")
-typeActiveLabel.Size = UDim2.new(0, 221, 0, 14)
-typeActiveLabel.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 48)
-typeActiveLabel.BackgroundTransparency = 1
-typeActiveLabel.Text = "Types: (none)"
-typeActiveLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
-typeActiveLabel.TextXAlignment = Enum.TextXAlignment.Left
-typeActiveLabel.Font = Enum.Font.Gotham
-typeActiveLabel.TextSize = 9
-typeActiveLabel.TextTruncate = Enum.TextTruncate.AtEnd
-typeActiveLabel.ZIndex = 2
-typeActiveLabel.Parent = frame
-
--- Clear Types button
-local clearTypesButton = Instance.new("TextButton")
-clearTypesButton.Size = UDim2.new(0, 221, 0, 22)
-clearTypesButton.Position = UDim2.new(0, 20, 0, TYPE_SECTION_Y + 66)
-clearTypesButton.BackgroundColor3 = Color3.fromRGB(140, 40, 40)
-clearTypesButton.TextColor3 = Color3.new(1, 1, 1)
-clearTypesButton.Text = "Clear Types"
-clearTypesButton.Font = Enum.Font.Gotham
-clearTypesButton.TextSize = 11
-clearTypesButton.ZIndex = 2
-clearTypesButton.Parent = frame
-do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = clearTypesButton
-end
-
-local function refreshTypeUI()
-    if #typeFilter == 0 then
-        typeActiveLabel.Text = "Types: (none)"
-    else
-        typeActiveLabel.Text = "Types: " .. table.concat(typeFilter, ", ")
+-- Refresh button highlights to match pendingCarTypes
+local function refreshTypeRadioUI()
+    local anySelected = (#pendingCarTypes == 0)
+    typeRadioButtons["Any"].BackgroundColor3 = anySelected
+        and Color3.fromRGB(0, 130, 200)
+        or  Color3.fromRGB(55, 55, 55)
+    for _, typeName in ipairs(CAR_TYPES) do
+        if typeName ~= "Any" then
+            local active = false
+            for _, t in ipairs(pendingCarTypes) do
+                if t == typeName then active = true; break end
+            end
+            typeRadioButtons[typeName].BackgroundColor3 = active
+                and Color3.fromRGB(0, 130, 200)
+                or  Color3.fromRGB(55, 55, 55)
+        end
     end
 end
 
-local TYPE_SECTION_END = TYPE_SECTION_Y + 96
+local TYPE_SECTION_END = TYPE_SECTION_Y + 50
 
 makeDivider(TYPE_SECTION_END)
 
@@ -954,7 +930,25 @@ local function rebuildQueueUI()
     for _, child in ipairs(queueScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
-    for i, carName in ipairs(carQueue) do
+    for i, entry in ipairs(carQueue) do
+        -- Support both new {name, types} tables and legacy bare strings / old {name, type}
+        local carName
+        local carTypes  -- list of type strings, empty = Any
+        if type(entry) == "table" then
+            carName  = entry.name
+            if type(entry.types) == "table" then
+                carTypes = entry.types
+            elseif type(entry.type) == "string" and entry.type ~= "" then
+                carTypes = { entry.type }  -- migrate old single-type format
+            else
+                carTypes = {}
+            end
+        else
+            carName  = entry
+            carTypes = {}
+        end
+        local typeDisplay = (#carTypes == 0) and "Any" or table.concat(carTypes, "/")
+
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundTransparency = i % 2 == 0 and 0 or 1
@@ -964,12 +958,12 @@ local function rebuildQueueUI()
         row.ZIndex = 3
         row.Parent = queueScroll
 
-        -- Car name label (top half of row)
+        -- "#1  Porcha Cayana — Gold/Rainbow" label (top half)
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1, -54, 0, 18)
         lbl.Position = UDim2.new(0, 6, 0, 2)
         lbl.BackgroundTransparency = 1
-        lbl.Text = "#" .. i .. "  " .. getDisplayForName(carName)
+        lbl.Text = "#" .. i .. "  " .. carName .. " — " .. typeDisplay
         lbl.TextColor3 = Color3.new(1, 1, 1)
         lbl.Font = Enum.Font.Gotham
         lbl.TextSize = 10
@@ -978,7 +972,7 @@ local function rebuildQueueUI()
         lbl.ZIndex = 4
         lbl.Parent = row
 
-        -- Buy count display
+        -- Buy count display (bottom half)
         local buyCountLbl = Instance.new("TextLabel")
         buyCountLbl.Size = UDim2.new(0, 80, 0, 14)
         buyCountLbl.Position = UDim2.new(0, 6, 0, 21)
@@ -1000,7 +994,7 @@ local function rebuildQueueUI()
         buyCountLbl.ZIndex = 4
         buyCountLbl.Parent = row
 
-        -- Limit text box (bottom half, small)
+        -- Limit text box
         local limitBox = Instance.new("TextBox")
         limitBox.Size = UDim2.new(0, 38, 0, 14)
         limitBox.Position = UDim2.new(0, 90, 0, 21)
@@ -1049,8 +1043,8 @@ local function rebuildQueueUI()
             local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = xBtn
         end
 
-        -- Wire up set-limit button
         local capturedName = carName
+        local capturedIdx  = i
         setBtn.MouseButton1Click:Connect(function()
             local val = tonumber(limitBox.Text)
             if val and val >= 1 then
@@ -1063,14 +1057,8 @@ local function rebuildQueueUI()
             rebuildQueueUI()
         end)
 
-        -- Wire up remove button
         xBtn.MouseButton1Click:Connect(function()
-            for j, n in ipairs(carQueue) do
-                if n == capturedName then
-                    table.remove(carQueue, j)
-                    break
-                end
-            end
+            table.remove(carQueue, capturedIdx)
             carBuyLimit[capturedName] = nil
             carBuyCount[capturedName] = nil
             rebuildQueueUI()
@@ -1120,8 +1108,9 @@ end
 -- ── AUTO BUY FUNCTIONS ─────────────────────────────────────────────────────
 
 local function isInQueue(name)
-    for _, n in ipairs(carQueue) do
-        if n == name then return true end
+    for _, entry in ipairs(carQueue) do
+        local entryName = type(entry) == "table" and entry.name or entry
+        if entryName == name then return true end
     end
     return false
 end
@@ -1162,8 +1151,8 @@ local function findCarInWorld(carName)
     return nil
 end
 
--- Scan SpawnedCars and auto-add any rarity/type filter matches to carQueue.
--- Called each tick so new spawns get picked up immediately.
+-- Scan SpawnedCars and auto-add any rarity filter matches to carQueue.
+-- Type is per-entry, not a global filter, so only rarity is injected here.
 local function injectFilterMatches()
     local spawnedCars = workspace:FindFirstChild("SpawnedCars")
     if not spawnedCars then return end
@@ -1173,22 +1162,15 @@ local function injectFilterMatches()
         if carName and not isInQueue(carName) then
             local displayStr = getDisplayForName(carName)
             local rarity     = displayStr:match("%((.-)%)") or ""
-            local carType    = getCarTypeFromSlot(slot)
 
             local matched = false
-            -- Check rarity filter
             for _, r in ipairs(rarityFilter) do
                 if r == rarity then matched = true; break end
             end
-            -- Check type filter
-            if not matched then
-                for _, t in ipairs(typeFilter) do
-                    if t == carType then matched = true; break end
-                end
-            end
 
             if matched then
-                table.insert(carQueue, carName)
+                -- Rarity-injected entries use Any type (match any type on the spot)
+                table.insert(carQueue, { name = carName, type = "" })
                 rebuildQueueUI()
                 saveSettings()
             end
@@ -1197,44 +1179,56 @@ local function injectFilterMatches()
 end
 
 local function findHighestPriorityCar()
-    -- Inject filter-matched cars before scanning
+    -- Inject rarity filter matches before scanning
     injectFilterMatches()
 
     local spawnedCars = workspace:FindFirstChild("SpawnedCars")
+    if not spawnedCars then return nil, nil end
 
-    -- Priority 1: explicit carQueue entries (in order)
-    for _, carName in ipairs(carQueue) do
-        local model = findCarInWorld(carName)
-        if model then
-            return carName, model
+    -- Priority 1: explicit carQueue entries in order, matching name AND types
+    for _, entry in ipairs(carQueue) do
+        local carName  = type(entry) == "table" and entry.name or entry
+        -- Resolve types list — support old {type=""} single-type format
+        local wantTypes
+        if type(entry) == "table" then
+            if type(entry.types) == "table" then
+                wantTypes = entry.types
+            elseif type(entry.type) == "string" and entry.type ~= "" then
+                wantTypes = { entry.type }
+            else
+                wantTypes = {}
+            end
+        else
+            wantTypes = {}
         end
-    end
 
-    -- Priority 2: first rarity-filter match in SpawnedCars not in queue
-    -- (injectFilterMatches already added them, but as fallback scan live)
-    if spawnedCars and #rarityFilter > 0 then
         for _, slot in pairs(spawnedCars:GetChildren()) do
-            local carName = getCarNameFromSlot(slot)
-            if carName then
-                local displayStr = getDisplayForName(carName)
-                local rarity     = displayStr:match("%((.-)%)") or ""
-                for _, r in ipairs(rarityFilter) do
-                    if r == rarity then
-                        return carName, slot
+            local slotName = getCarNameFromSlot(slot)
+            if slotName == carName then
+                if #wantTypes == 0 then
+                    -- Any type matches
+                    return carName, slot
+                else
+                    local slotType = getCarTypeFromSlot(slot)
+                    for _, wt in ipairs(wantTypes) do
+                        if slotType == wt then
+                            return carName, slot
+                        end
                     end
                 end
             end
         end
     end
 
-    -- Priority 3: first type-filter match in SpawnedCars
-    if spawnedCars and #typeFilter > 0 then
+    -- Priority 2: rarity-filter fallback
+    if #rarityFilter > 0 then
         for _, slot in pairs(spawnedCars:GetChildren()) do
             local carName = getCarNameFromSlot(slot)
-            if carName then
-                local carType = getCarTypeFromSlot(slot)
-                for _, t in ipairs(typeFilter) do
-                    if t == carType then
+            if carName and not isInQueue(carName) then
+                local displayStr = getDisplayForName(carName)
+                local rarity     = displayStr:match("%((.-)%)") or ""
+                for _, r in ipairs(rarityFilter) do
+                    if r == rarity then
                         return carName, slot
                     end
                 end
@@ -2120,19 +2114,23 @@ addQueueButton.MouseButton1Click:Connect(function()
         task.delay(2, function() setStatus("Idle") end)
         return
     end
-    for _, n in ipairs(carQueue) do
-        if n == pendingCar then
-            setStatus("Already in queue!", Color3.fromRGB(255, 160, 50))
-            task.delay(2, function()
-                setStatus(autoBuyEnabled and "Scanning..." or "Idle")
-            end)
-            return
-        end
+    if isInQueue(pendingCar) then
+        setStatus("Already in queue!", Color3.fromRGB(255, 160, 50))
+        task.delay(2, function()
+            setStatus(autoBuyEnabled and "Scanning..." or "Idle")
+        end)
+        return
     end
-    table.insert(carQueue, pendingCar)
+    -- Copy the current pendingCarTypes list into the entry
+    local entryTypes = {}
+    for _, t in ipairs(pendingCarTypes) do
+        table.insert(entryTypes, t)
+    end
+    table.insert(carQueue, { name = pendingCar, types = entryTypes })
     rebuildQueueUI()
     saveSettings()
-    setStatus("Added: " .. pendingCar, Color3.fromRGB(80, 220, 100))
+    local typeDisplay = #entryTypes == 0 and "Any" or table.concat(entryTypes, "/")
+    setStatus("Added: " .. pendingCar .. " — " .. typeDisplay, Color3.fromRGB(80, 220, 100))
     task.delay(2, function()
         setStatus(autoBuyEnabled and "Scanning..." or "Idle")
     end)
@@ -2158,34 +2156,36 @@ for _, rarity in ipairs(RARITIES) do
     end)
 end
 
--- Add Type button
-addTypeButton.MouseButton1Click:Connect(function()
-    local t = typeInputBox.Text:match("^%s*(.-)%s*$")  -- trim whitespace
-    if t == "" then return end
-    -- Prevent duplicates
-    for _, existing in ipairs(typeFilter) do
-        if existing == t then
-            typeInputBox.Text = ""
-            return
+-- Type toggle buttons — multi-select; "Any" clears all specific selections
+for _, typeName in ipairs(CAR_TYPES) do
+    typeRadioButtons[typeName].MouseButton1Click:Connect(function()
+        if typeName == "Any" then
+            -- Any clears all specific types
+            pendingCarTypes = {}
+        else
+            -- Toggle this type in/out of pendingCarTypes
+            local found = false
+            for i, t in ipairs(pendingCarTypes) do
+                if t == typeName then
+                    table.remove(pendingCarTypes, i)
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(pendingCarTypes, typeName)
+            end
+            -- If nothing is selected after toggle, implicitly revert to Any
+            -- (leave pendingCarTypes empty = Any; UI will reflect this)
         end
-    end
-    table.insert(typeFilter, t)
-    typeInputBox.Text = ""
-    refreshTypeUI()
-    saveSettings()
-end)
-
--- Clear Types button
-clearTypesButton.MouseButton1Click:Connect(function()
-    typeFilter = {}
-    refreshTypeUI()
-    saveSettings()
-end)
+        refreshTypeRadioUI()
+    end)
+end
 
 -- Auto Buy toggle
 autoBuyButton.MouseButton1Click:Connect(function()
-    if #carQueue == 0 and #rarityFilter == 0 and #typeFilter == 0 then
-        setStatus("Add cars or set a filter first!", Color3.fromRGB(255, 100, 100))
+    if #carQueue == 0 and #rarityFilter == 0 then
+        setStatus("Add cars or set a rarity filter first!", Color3.fromRGB(255, 100, 100))
         task.delay(2, function() setStatus("Idle") end)
         return
     end
@@ -2356,8 +2356,8 @@ end)
 
 task.spawn(function()
     while task.wait(0.5) do
-        -- Always inject rarity/type filter matches into the queue when active
-        if #rarityFilter > 0 or #typeFilter > 0 then
+        -- Always inject rarity filter matches into the queue when active
+        if #rarityFilter > 0 then
             injectFilterMatches()
         end
         -- Auto Buy — trigger if queue has entries (filters may have just filled it)
@@ -2407,17 +2407,12 @@ task.spawn(function()
         refreshRarityUI()
     end
 
-    if saved.typeFilter and type(saved.typeFilter) == "table" then
-        typeFilter = saved.typeFilter
-        refreshTypeUI()
-    end
-
     if saved.carBuyLimit and type(saved.carBuyLimit) == "table" then
         carBuyLimit = saved.carBuyLimit
         rebuildQueueUI()  -- re-render rows with restored limits
     end
 
-    if saved.autoBuyEnabled and (#carQueue > 0 or #rarityFilter > 0 or #typeFilter > 0) then
+    if saved.autoBuyEnabled and (#carQueue > 0 or #rarityFilter > 0) then
         autoBuyEnabled = true
         autoBuyButton.Text = "Auto Buy: ON"
         autoBuyButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
