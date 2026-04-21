@@ -756,7 +756,7 @@ end
 -- ── VEHICLE FLY-TO-SPOT ───────────────────────────────────────────────────
 
 local FLY_SPEED    = 80
-local ARRIVE_DIST  = 6
+local ARRIVE_DIST  = 1.5
 local FLY_VEL_NAME = "AutoBuyFlyVelocity"
 local FLY_GYRO_NAME= "AutoBuyFlyGyro"
 
@@ -931,22 +931,42 @@ local function flyCarToSpot()
         setStatus("ParkSpot not found!", Color3.fromRGB(255, 80, 80))
     end
 
-    -- Hold to bleed momentum
-    if rootPart and rootPart.Parent and vel and vel.Parent then
-        vel.Velocity = Vector3.zero
-        local holdConn
-        local holdTime = 0
-        holdConn = runService.Heartbeat:Connect(function(dt)
-            holdTime += dt
+    -- ── FINAL ALIGNMENT SNAP ──────────────────────────────────────────────────
+    -- After flying, override the car's orientation so its LookVector matches
+    -- Hit.CFrame.LookVector (= +X in Stage 1). This gives alignment_score = 1.0.
+    -- Also kills all residual velocity so speed_score = 1.0.
+    pcall(function()
+        local stageFolder = workspace.Stages[v_u_39 .. "Stage"]  -- current stage
+        local hit = stageFolder.STAGE.ParkSpot.Hit
+
+        -- Build a CFrame at the park position with Hit's exact rotation
+        -- CFrame.new(pos) * (rotation-only component of Hit.CFrame)
+        local hitRotOnly = hit.CFrame - hit.CFrame.Position  -- strip translation
+        local snappedCFrame = CFrame.new(parkPos) * hitRotOnly
+
+        -- Hold for 3 frames while zeroing velocity, then snap position+rotation
+        local snapConn
+        local snapTime = 0
+        snapConn = runService.Heartbeat:Connect(function(dt)
+            snapTime += dt
             pcall(function()
-                vel.Velocity = Vector3.zero
                 rootPart.AssemblyLinearVelocity  = Vector3.zero
                 rootPart.AssemblyAngularVelocity = Vector3.zero
+                vel.Velocity = Vector3.zero
+                gyro.CFrame  = snappedCFrame         -- hold this orientation
             end)
-            if holdTime >= 0.6 then holdConn:Disconnect() end
+            if snapTime >= 0.5 then
+                snapConn:Disconnect()
+                -- Final hard snap
+                pcall(function()
+                    rootPart.CFrame = snappedCFrame
+                    rootPart.AssemblyLinearVelocity  = Vector3.zero
+                    rootPart.AssemblyAngularVelocity = Vector3.zero
+                end)
+            end
         end)
-        task.wait(0.65)
-    end
+        task.wait(0.55)
+    end)
 
     disableNoClip()
     removeFlyHandlers(rootPart)
