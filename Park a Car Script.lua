@@ -43,6 +43,8 @@ local dropdownOpen    = false
 local autoCashEnabled = false
 local autoCashRunning = false
 
+local autoAdsEnabled  = false
+
 -- ── TELEPORT METHODS ───────────────────────────────────────────────────────
 local TELEPORT_METHODS = {
     { id = "anchor_snap",    label = "1. Anchor & Snap"       },
@@ -165,6 +167,7 @@ local function saveSettings()
             carQueue          = carQueue,
             autoBuyEnabled    = autoBuyEnabled,
             autoCashEnabled   = autoCashEnabled,
+            autoAdsEnabled    = autoAdsEnabled,
         }
         writefile(SAVE_FILE, httpService:JSONEncode(data))
     end)
@@ -187,7 +190,7 @@ screenGui.Name = "ObstacleRemover"
 screenGui.Parent = game.CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 730)
+frame.Size = UDim2.new(0, 260, 0, 820)
 frame.Position = UDim2.new(0.4, 0, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 frame.Active = true
@@ -557,10 +560,43 @@ end
 
 makeDivider(685)
 
+-- ── AUTO REMOVE ADS SECTION ────────────────────────────────────────────────
+
+local autoAdsButton = Instance.new("TextButton")
+autoAdsButton.Size = UDim2.new(0, 221, 0, 30)
+autoAdsButton.Position = UDim2.new(0, 20, 0, 695)
+autoAdsButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+autoAdsButton.TextColor3 = Color3.new(1, 1, 1)
+autoAdsButton.Text = "🚫  Auto Remove Ads: OFF"
+autoAdsButton.Font = Enum.Font.Gotham
+autoAdsButton.TextSize = 12
+autoAdsButton.ZIndex = 2
+autoAdsButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = autoAdsButton
+end
+
+-- Rejoin
+local rejoinButton = Instance.new("TextButton")
+rejoinButton.Size = UDim2.new(0, 221, 0, 30)
+rejoinButton.Position = UDim2.new(0, 20, 0, 733)
+rejoinButton.BackgroundColor3 = Color3.fromRGB(150, 80, 20)
+rejoinButton.TextColor3 = Color3.new(1, 1, 1)
+rejoinButton.Text = "🔄  Rejoin"
+rejoinButton.Font = Enum.Font.Gotham
+rejoinButton.TextSize = 13
+rejoinButton.ZIndex = 2
+rejoinButton.Parent = frame
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = rejoinButton
+end
+
+makeDivider(771)
+
 -- Close button
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 221, 0, 25)
-closeButton.Position = UDim2.new(0, 20, 0, 695)
+closeButton.Position = UDim2.new(0, 20, 0, 781)
 closeButton.Text = "Close"
 closeButton.Font = Enum.Font.Gotham
 closeButton.TextSize = 13
@@ -1248,6 +1284,79 @@ local function runAutoCash()
     autoCashRunning = false
 end
 
+-- ── AUTO-REMOVE ADS LOGIC ─────────────────────────────────────────────────
+--
+-- Ad sources identified from game script analysis:
+--
+--  1. Favorite Item prompt  — CoreGui dialog triggered by
+--       MarketplaceService:PromptSetFavorite(game.PlaceId, ...) on join.
+--       Auto-clicks "No" the moment the dialog spawns.
+--
+--  2. Bundle popup          — PlayerGui.Windows.Bundle  (Enabled flag)
+--       Re-shown every 600 s (TimeForBundleButtonToReappear = 600) with a
+--       60-second "last chance" burst (LastChanceDuration = 60).
+--
+--  3. HUD Bundle button     — PlayerGui.Right.Bundle   (Visible flag)
+--       Appears on the same 600-second cycle as the popup.
+--
+--  4. Spin popup            — PlayerGui.Windows.Spin   (Enabled flag)
+--       Shown on join and on certain game events.
+--
+--  5. Robux Shop popup      — PlayerGui.Windows.RobuxShop (Enabled flag)
+--       Triggered by in-game shop-open events.
+--
+-- Strategy: dual guard —
+--   (a) DescendantAdded listeners on CoreGui & PlayerGui react instantly.
+--   (b) A 0.5-second polling loop catches anything that slips through
+--       (e.g. the game re-enabling Bundle.Enabled between poll ticks).
+
+local function suppressAds()
+    -- PlayerGui ad windows
+    local pg = players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if pg then
+        pcall(function()
+            local wins = pg:FindFirstChild("Windows")
+            if wins then
+                local bundle = wins:FindFirstChild("Bundle")
+                if bundle and bundle.Enabled then bundle.Enabled = false end
+
+                local spin = wins:FindFirstChild("Spin")
+                if spin and spin.Enabled then spin.Enabled = false end
+
+                local robux = wins:FindFirstChild("RobuxShop")
+                if robux and robux.Enabled then robux.Enabled = false end
+            end
+
+            -- HUD bundle button (lives in PlayerGui.Right)
+            local right = pg:FindFirstChild("Right")
+            if right then
+                local bundleBtn = right:FindFirstChild("Bundle")
+                if bundleBtn and bundleBtn.Visible then
+                    bundleBtn.Visible = false
+                end
+            end
+        end)
+    end
+
+    -- CoreGui: dismiss any active Favorite Item / PromptSetFavorite dialog
+    -- by auto-clicking the "No" button if the prompt is currently open.
+    pcall(function()
+        for _, obj in pairs(game.CoreGui:GetDescendants()) do
+            if obj:IsA("TextButton") and obj.Text == "No" then
+                local ancestor = obj.Parent
+                while ancestor and ancestor ~= game.CoreGui do
+                    local n = ancestor.Name:lower()
+                    if n:find("favor") or n:find("prompt") or n:find("dialog") then
+                        obj.MouseButton1Click:Fire()
+                        break
+                    end
+                    ancestor = ancestor.Parent
+                end
+            end
+        end
+    end)
+end
+
 -- ── CONNECTIONS ────────────────────────────────────────────────────────────
 
 -- Speed slider
@@ -1365,7 +1474,30 @@ autoCashButton.MouseButton1Click:Connect(function()
     saveSettings()
 end)
 
--- DescendantAdded auto-remove
+-- Auto Ads toggle
+autoAdsButton.MouseButton1Click:Connect(function()
+    autoAdsEnabled = not autoAdsEnabled
+    if autoAdsEnabled then
+        autoAdsButton.Text = "🚫  Auto Remove Ads: ON"
+        autoAdsButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
+        suppressAds()
+    else
+        autoAdsButton.Text = "🚫  Auto Remove Ads: OFF"
+        autoAdsButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    end
+    saveSettings()
+end)
+
+-- Rejoin
+rejoinButton.MouseButton1Click:Connect(function()
+    rejoinButton.Text = "Rejoining..."
+    rejoinButton.BackgroundColor3 = Color3.fromRGB(100, 50, 10)
+    task.delay(0.3, function()
+        pcall(function()
+            game:GetService("TeleportService"):Teleport(game.PlaceId, players.LocalPlayer)
+        end)
+    end)
+end)
 game.DescendantAdded:Connect(function(obj)
     if not autoRemoveEnabled then return end
     task.wait()
@@ -1383,7 +1515,64 @@ end)
 closeButton.MouseButton1Click:Connect(function()
     autoCashEnabled = false
     autoBuyEnabled  = false
+    autoAdsEnabled  = false
     screenGui:Destroy()
+end)
+
+-- ── LIVE AD INTERCEPTION ───────────────────────────────────────────────────
+
+-- Catch FavoriteItem / PromptSetFavorite the instant it appears in CoreGui.
+-- The game calls MarketplaceService:PromptSetFavorite on join (and possibly
+-- on other events). The CoreGui dialog contains a "No" TextButton — we fire
+-- a click on it immediately so the player never sees it.
+game.CoreGui.DescendantAdded:Connect(function(obj)
+    if not autoAdsEnabled then return end
+    task.wait()  -- let the dialog finish constructing
+    if not obj or not obj.Parent then return end
+    pcall(function()
+        -- Walk up to find a container whose name suggests a prompt/dialog
+        local cur = obj
+        local isFavoriteDialog = false
+        for _ = 1, 6 do
+            if not cur then break end
+            local n = cur.Name:lower()
+            if n:find("favor") or n:find("promptset") or n:find("dialog") or n:find("modal") then
+                isFavoriteDialog = true
+                break
+            end
+            cur = cur.Parent
+        end
+        if not isFavoriteDialog and not (obj:IsA("ScreenGui") and obj.Name:lower():find("favor")) then
+            return
+        end
+        -- Search for the "No" button in the dialog subtree
+        local root = obj:IsA("ScreenGui") and obj or obj.Parent
+        if not root then return end
+        for _, btn in pairs(root:GetDescendants()) do
+            if btn:IsA("TextButton") and btn.Text == "No" then
+                btn.MouseButton1Click:Fire()
+                return
+            end
+        end
+    end)
+end)
+
+-- Catch Bundle / Spin / RobuxShop the instant they become enabled in PlayerGui.
+players.LocalPlayer.PlayerGui.DescendantAdded:Connect(function(obj)
+    if not autoAdsEnabled then return end
+    task.wait()
+    if not obj or not obj.Parent then return end
+    pcall(function()
+        local n = obj.Name
+        -- Hide HUD bundle button when it appears
+        if (n == "Bundle" or n == "BundleButton") and obj:IsA("GuiObject") then
+            obj.Visible = false
+        end
+        -- Disable Windows children when they're added/re-added
+        if (n == "Bundle" or n == "Spin" or n == "RobuxShop") and obj:IsA("ScreenGui") then
+            obj.Enabled = false
+        end
+    end)
 end)
 
 -- Fly GUI — loads the external Fe Vehicle Fly script via loadstring
@@ -1407,10 +1596,11 @@ flyButton.MouseButton1Click:Connect(function()
     end)
 end)
 
--- ── AUTO BUY SCAN LOOP ─────────────────────────────────────────────────────
+-- ── AUTO BUY + ADS SCAN LOOP ───────────────────────────────────────────────
 
 task.spawn(function()
     while task.wait(0.5) do
+        -- Auto Buy
         if autoBuyEnabled and not autoBuyRunning and #carQueue > 0 then
             local carName, carModel = findHighestPriorityCar()
             if carName and carModel then
@@ -1418,6 +1608,11 @@ task.spawn(function()
                     performAutoBuy(carName, carModel)
                 end)
             end
+        end
+        -- Ad suppression polling (runs every 0.5 s — well within the game's
+        -- 600-second bundle re-show timer, so it will always catch re-enables)
+        if autoAdsEnabled then
+            suppressAds()
         end
     end
 end)
@@ -1457,6 +1652,13 @@ task.spawn(function()
         autoCashButton.Text = "Auto Cash: ON"
         autoCashButton.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         task.spawn(runAutoCash)
+    end
+
+    if saved.autoAdsEnabled then
+        autoAdsEnabled = true
+        autoAdsButton.Text = "🚫  Auto Remove Ads: ON"
+        autoAdsButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
+        suppressAds()
     end
 end)
 
