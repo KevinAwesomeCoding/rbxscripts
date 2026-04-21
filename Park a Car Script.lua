@@ -931,20 +931,38 @@ local function flyCarToSpot()
         setStatus("ParkSpot not found!", Color3.fromRGB(255, 80, 80))
     end
 
+    -- Hold to bleed momentum — zeroes velocity every frame for 0.65 s
+    if rootPart and rootPart.Parent and vel and vel.Parent then
+        vel.Velocity = Vector3.zero
+        pcall(function()
+            rootPart.AssemblyLinearVelocity  = Vector3.zero
+            rootPart.AssemblyAngularVelocity = Vector3.zero
+        end)
+        local holdConn
+        local holdTime = 0
+        holdConn = runService.Heartbeat:Connect(function(dt)
+            holdTime += dt
+            pcall(function()
+                vel.Velocity = Vector3.zero
+                rootPart.AssemblyLinearVelocity  = Vector3.zero
+                rootPart.AssemblyAngularVelocity = Vector3.zero
+            end)
+            if holdTime >= 0.65 then holdConn:Disconnect() end
+        end)
+        task.wait(0.7)
+    end
+
     -- ── FINAL ALIGNMENT SNAP ──────────────────────────────────────────────────
-    -- After flying, override the car's orientation so its LookVector matches
-    -- Hit.CFrame.LookVector (= +X in Stage 1). This gives alignment_score = 1.0.
-    -- Also kills all residual velocity so speed_score = 1.0.
+    -- Override the car's orientation so its LookVector matches Hit.CFrame.LookVector
+    -- (= +X in Stage 1). This gives alignment_score = 1.0.
     pcall(function()
-        local stageFolder = workspace.Stages[v_u_39 .. "Stage"]  -- current stage
-        local hit = stageFolder.STAGE.ParkSpot.Hit
+        local hit = workspace.Stages["1Stage"].STAGE.ParkSpot.Hit
 
         -- Build a CFrame at the park position with Hit's exact rotation
-        -- CFrame.new(pos) * (rotation-only component of Hit.CFrame)
         local hitRotOnly = hit.CFrame - hit.CFrame.Position  -- strip translation
         local snappedCFrame = CFrame.new(parkPos) * hitRotOnly
 
-        -- Hold for 3 frames while zeroing velocity, then snap position+rotation
+        -- Hold orientation and zero velocity for 0.5 s, then hard-snap
         local snapConn
         local snapTime = 0
         snapConn = runService.Heartbeat:Connect(function(dt)
@@ -953,7 +971,7 @@ local function flyCarToSpot()
                 rootPart.AssemblyLinearVelocity  = Vector3.zero
                 rootPart.AssemblyAngularVelocity = Vector3.zero
                 vel.Velocity = Vector3.zero
-                gyro.CFrame  = snappedCFrame         -- hold this orientation
+                gyro.CFrame  = snappedCFrame
             end)
             if snapTime >= 0.5 then
                 snapConn:Disconnect()
