@@ -2239,7 +2239,7 @@ local function runAutoStage()
         if not rootPart then task.wait(1); continue end
 
         -- ── Determine current stage & target cash wall ─────────────────────
-        local currentStage = player:GetAttribute("CurrentStage") or 1
+        local currentStage = math.max(1, player:GetAttribute("CurrentStage") or 1)
         local cashPart     = getStageCashPart(currentStage, autoStageMap)
         if not cashPart then
             setStageStatus("Cash wall for stage " .. currentStage .. " not found", Color3.fromRGB(255, 80, 80))
