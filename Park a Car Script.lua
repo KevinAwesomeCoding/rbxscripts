@@ -2325,24 +2325,24 @@ local function runAutoQueueScanner()
                 -- Rarity filter
                 if autoQueueRarity ~= "Any" then
                     local rarity = getSpawnedCarRarity(car)
-                    if rarity ~= autoQueueRarity then goto continue end
+                    if rarity ~= autoQueueRarity then continue end
                 end
 
                 -- Type filter (skip if set is non-empty and car type not in it)
                 if next(autoQueueTypes) ~= nil then
                     local carType = getSpawnedCarType(car)
-                    if not autoQueueTypes[carType] then goto continue end
+                    if not autoQueueTypes[carType] then continue end
                 end
 
                 -- Name → find in carData
                 local displayName = getSpawnedCarName(car)
-                if displayName == "" then goto continue end
+                if displayName == "" then continue end
 
                 local matched = nil
                 for _, entry in ipairs(carData) do
                     if entry.name == displayName then matched = entry.name; break end
                 end
-                if not matched then goto continue end
+                if not matched then continue end
 
                 -- Skip if already queued
                 local alreadyIn = false
@@ -2350,14 +2350,12 @@ local function runAutoQueueScanner()
                     local entryName = type(n) == "table" and n.name or n
                     if entryName == matched then alreadyIn = true; break end
                 end
-                if alreadyIn then goto continue end
+                if alreadyIn then continue end
 
                 -- Add to queue (scanner adds with empty types list = matches any type of that car)
                 table.insert(carQueue, {name = matched, types = {}})
                 rebuildQueueUI()
                 saveSettings()
-
-                ::continue::
             end
         end)
         task.wait(2)
