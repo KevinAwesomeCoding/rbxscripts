@@ -173,6 +173,23 @@ local autoCashRunning = false
 
 local autoAdsEnabled  = false
 
+-- ── AUTO-QUEUE FILTER STATE ────────────────────────────────────────────────
+local autoQueueEnabled   = false
+local autoQueueRarity    = "Any"
+local autoQueueTypes     = {}
+
+-- ── AUTO STAGE STATE ───────────────────────────────────────────────────────
+local autoStageEnabled   = false
+local autoStageRunning   = false
+local autoStageMap       = "Normal"
+local stageStatusLabel   = nil
+
+-- ── CAR PARK Y OFFSET ─────────────────────────────────────────────────────
+local CAR_PARK_Y_OFFSET = {
+    ["Saurus Stalker"] = 10,
+}
+local CAR_PARK_Y_DEFAULT = 2
+
 -- ── TELEPORT METHODS ───────────────────────────────────────────────────────
 local TELEPORT_METHODS = {
     { id = "anchor_snap",    label = "1. Anchor & Snap"       },
@@ -305,6 +322,9 @@ local function saveSettings()
             autoAdsEnabled    = autoAdsEnabled,
             rarityFilter      = rarityFilter,
             carBuyLimit       = carBuyLimit,
+            autoQueueRarity   = autoQueueRarity,
+            autoQueueTypes    = autoQueueTypes,
+            autoStageMap      = autoStageMap,
         }
         writefile(SAVE_FILE, httpService:JSONEncode(data))
     end)
@@ -327,7 +347,7 @@ screenGui.Name = "ObstacleRemover"
 screenGui.Parent = game.CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 1220)
+frame.Size = UDim2.new(0, 260, 0, 1480)
 frame.Position = UDim2.new(0.4, 0, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 frame.Active = true
@@ -774,9 +794,154 @@ local TYPE_SECTION_END = TYPE_SECTION_Y + 50
 
 makeDivider(TYPE_SECTION_END)
 
+-- ── AUTO-QUEUE FILTER SECTION ──────────────────────────────────────────────
+
+local AQ_SECTION_Y = TYPE_SECTION_END + 7
+
+local aqFilterLabel = Instance.new("TextLabel")
+aqFilterLabel.Size = UDim2.new(0, 221, 0, 18)
+aqFilterLabel.Position = UDim2.new(0, 20, 0, AQ_SECTION_Y)
+aqFilterLabel.BackgroundTransparency = 1
+aqFilterLabel.Text = "Auto-Queue Filter:"
+aqFilterLabel.TextColor3 = Color3.new(1, 1, 1)
+aqFilterLabel.TextXAlignment = Enum.TextXAlignment.Left
+aqFilterLabel.Font = Enum.Font.GothamBold
+aqFilterLabel.TextSize = 13
+aqFilterLabel.ZIndex = 2
+aqFilterLabel.Parent = frame
+
+local aqRarityLbl = Instance.new("TextLabel")
+aqRarityLbl.Size = UDim2.new(0, 60, 0, 16)
+aqRarityLbl.Position = UDim2.new(0, 20, 0, AQ_SECTION_Y + 22)
+aqRarityLbl.BackgroundTransparency = 1
+aqRarityLbl.Text = "Rarity:"
+aqRarityLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+aqRarityLbl.TextXAlignment = Enum.TextXAlignment.Left
+aqRarityLbl.Font = Enum.Font.Gotham
+aqRarityLbl.TextSize = 11
+aqRarityLbl.ZIndex = 2
+aqRarityLbl.Parent = frame
+
+local aqRarityButton = Instance.new("TextButton")
+aqRarityButton.Size = UDim2.new(0, 155, 0, 26)
+aqRarityButton.Position = UDim2.new(0, 86, 0, AQ_SECTION_Y + 18)
+aqRarityButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+aqRarityButton.TextColor3 = Color3.new(1, 1, 1)
+aqRarityButton.Text = "▼  Any"
+aqRarityButton.Font = Enum.Font.Gotham
+aqRarityButton.TextSize = 11
+aqRarityButton.TextXAlignment = Enum.TextXAlignment.Left
+aqRarityButton.ZIndex = 6
+aqRarityButton.Parent = frame
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = aqRarityButton
+   local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,8); p.Parent = aqRarityButton end
+
+local aqRarityList = Instance.new("ScrollingFrame")
+aqRarityList.Size = UDim2.new(0, 155, 0, 110)
+aqRarityList.Position = UDim2.new(0, 86, 0, AQ_SECTION_Y + 46)
+aqRarityList.BackgroundColor3 = Color3.fromRGB(48, 48, 48)
+aqRarityList.BorderSizePixel = 0
+aqRarityList.ScrollBarThickness = 3
+aqRarityList.ScrollBarImageColor3 = Color3.fromRGB(0, 170, 255)
+aqRarityList.ZIndex = 15
+aqRarityList.Visible = false
+aqRarityList.Parent = frame
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = aqRarityList
+   local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder; l.Parent = aqRarityList end
+
+local AQ_RARITIES = {"Any","Common","Rare","Epic","Legendary","Mythical","Godly","Secret","Exclusive","Hacker"}
+local aqRarityOpen = false
+for i, rarity in ipairs(AQ_RARITIES) do
+    local rb = Instance.new("TextButton")
+    rb.Size = UDim2.new(1, 0, 0, 22)
+    rb.BackgroundTransparency = 1
+    rb.TextColor3 = Color3.new(1, 1, 1)
+    rb.Text = rarity
+    rb.Font = Enum.Font.Gotham
+    rb.TextSize = 11
+    rb.TextXAlignment = Enum.TextXAlignment.Left
+    rb.ZIndex = 16
+    rb.LayoutOrder = i
+    rb.Parent = aqRarityList
+    do local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,8); p.Parent = rb end
+    rb.MouseEnter:Connect(function() rb.BackgroundTransparency=0; rb.BackgroundColor3=Color3.fromRGB(70,70,70) end)
+    rb.MouseLeave:Connect(function() rb.BackgroundTransparency=1 end)
+    rb.MouseButton1Click:Connect(function()
+        autoQueueRarity = rarity
+        aqRarityButton.Text = "▼  " .. rarity
+        aqRarityList.Visible = false
+        aqRarityOpen = false
+    end)
+end
+aqRarityList.CanvasSize = UDim2.new(0, 0, 0, #AQ_RARITIES * 22)
+aqRarityButton.MouseButton1Click:Connect(function()
+    aqRarityOpen = not aqRarityOpen
+    aqRarityList.Visible = aqRarityOpen
+end)
+
+local aqTypesLbl = Instance.new("TextLabel")
+aqTypesLbl.Size = UDim2.new(0, 221, 0, 16)
+aqTypesLbl.Position = UDim2.new(0, 20, 0, AQ_SECTION_Y + 50)
+aqTypesLbl.BackgroundTransparency = 1
+aqTypesLbl.Text = "Types (multi, empty = Any):"
+aqTypesLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+aqTypesLbl.TextXAlignment = Enum.TextXAlignment.Left
+aqTypesLbl.Font = Enum.Font.Gotham
+aqTypesLbl.TextSize = 10
+aqTypesLbl.ZIndex = 2
+aqTypesLbl.Parent = frame
+
+local AQ_TYPES_LIST = {"Normal","Gold","Diamond","Rainbow","Galaxy"}
+local aqTypeButtons = {}
+local aqTypeColors = {
+    Normal=Color3.fromRGB(150,150,150), Gold=Color3.fromRGB(200,160,40),
+    Diamond=Color3.fromRGB(80,200,220), Rainbow=Color3.fromRGB(200,80,200),
+    Galaxy=Color3.fromRGB(80,80,200),
+}
+for i, typeName in ipairs(AQ_TYPES_LIST) do
+    local col = (i-1) % 3
+    local row = math.floor((i-1) / 3)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 70, 0, 24)
+    btn.Position = UDim2.new(0, 20 + col*75, 0, AQ_SECTION_Y + 69 + row*28)
+    btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Text = typeName
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 10
+    btn.ZIndex = 2
+    btn.Parent = frame
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = btn end
+    btn.MouseButton1Click:Connect(function()
+        if autoQueueTypes[typeName] then
+            autoQueueTypes[typeName] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        else
+            autoQueueTypes[typeName] = true
+            btn.BackgroundColor3 = aqTypeColors[typeName] or Color3.fromRGB(0,130,60)
+        end
+    end)
+    aqTypeButtons[typeName] = btn
+end
+
+local aqToggleButton = Instance.new("TextButton")
+aqToggleButton.Size = UDim2.new(0, 221, 0, 28)
+aqToggleButton.Position = UDim2.new(0, 20, 0, AQ_SECTION_Y + 100)
+aqToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+aqToggleButton.TextColor3 = Color3.new(1, 1, 1)
+aqToggleButton.Text = "Auto-Queue: OFF"
+aqToggleButton.Font = Enum.Font.Gotham
+aqToggleButton.TextSize = 12
+aqToggleButton.ZIndex = 2
+aqToggleButton.Parent = frame
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = aqToggleButton end
+
+local AQ_SECTION_END = AQ_SECTION_Y + 135
+makeDivider(AQ_SECTION_END)
+
 -- ── AUTO CASH SECTION ──────────────────────────────────────────────────────
 
-local AUTO_CASH_Y = TYPE_SECTION_END + 7
+local AUTO_CASH_Y = AQ_SECTION_END + 7
 
 local cashSectionLabel = Instance.new("TextLabel")
 cashSectionLabel.Size = UDim2.new(0, 221, 0, 18)
@@ -819,9 +984,75 @@ cashStatusLabel.Parent = frame
 local AUTO_CASH_DIVIDER = AUTO_CASH_Y + 87
 makeDivider(AUTO_CASH_DIVIDER)
 
+-- ── AUTO STAGE SECTION ─────────────────────────────────────────────────────
+
+local AUTO_STAGE_Y = AUTO_CASH_DIVIDER + 7
+
+local stageSectionLabel = Instance.new("TextLabel")
+stageSectionLabel.Size = UDim2.new(0, 221, 0, 18)
+stageSectionLabel.Position = UDim2.new(0, 20, 0, AUTO_STAGE_Y)
+stageSectionLabel.BackgroundTransparency = 1
+stageSectionLabel.Text = "Auto Stage:"
+stageSectionLabel.TextColor3 = Color3.new(1, 1, 1)
+stageSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+stageSectionLabel.Font = Enum.Font.GothamBold
+stageSectionLabel.TextSize = 13
+stageSectionLabel.ZIndex = 2
+stageSectionLabel.Parent = frame
+
+local stageMapButton = Instance.new("TextButton")
+stageMapButton.Size = UDim2.new(0, 221, 0, 26)
+stageMapButton.Position = UDim2.new(0, 20, 0, AUTO_STAGE_Y + 22)
+stageMapButton.BackgroundColor3 = Color3.fromRGB(40, 80, 130)
+stageMapButton.TextColor3 = Color3.new(1, 1, 1)
+stageMapButton.Text = "Map: Normal"
+stageMapButton.Font = Enum.Font.Gotham
+stageMapButton.TextSize = 12
+stageMapButton.ZIndex = 2
+stageMapButton.Parent = frame
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = stageMapButton end
+stageMapButton.MouseButton1Click:Connect(function()
+    if autoStageMap == "Normal" then
+        autoStageMap = "Underground"
+        stageMapButton.Text = "Map: Underground"
+        stageMapButton.BackgroundColor3 = Color3.fromRGB(80, 40, 130)
+    else
+        autoStageMap = "Normal"
+        stageMapButton.Text = "Map: Normal"
+        stageMapButton.BackgroundColor3 = Color3.fromRGB(40, 80, 130)
+    end
+end)
+
+local stageToggleButton = Instance.new("TextButton")
+stageToggleButton.Size = UDim2.new(0, 221, 0, 28)
+stageToggleButton.Position = UDim2.new(0, 20, 0, AUTO_STAGE_Y + 52)
+stageToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+stageToggleButton.TextColor3 = Color3.new(1, 1, 1)
+stageToggleButton.Text = "Auto Stage: OFF"
+stageToggleButton.Font = Enum.Font.Gotham
+stageToggleButton.TextSize = 13
+stageToggleButton.ZIndex = 2
+stageToggleButton.Parent = frame
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = stageToggleButton end
+
+stageStatusLabel = Instance.new("TextLabel")
+stageStatusLabel.Size = UDim2.new(0, 221, 0, 20)
+stageStatusLabel.Position = UDim2.new(0, 20, 0, AUTO_STAGE_Y + 84)
+stageStatusLabel.BackgroundTransparency = 1
+stageStatusLabel.Text = "Stage: Idle"
+stageStatusLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+stageStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+stageStatusLabel.Font = Enum.Font.Gotham
+stageStatusLabel.TextSize = 11
+stageStatusLabel.ZIndex = 2
+stageStatusLabel.Parent = frame
+
+local AUTO_STAGE_DIVIDER = AUTO_STAGE_Y + 110
+makeDivider(AUTO_STAGE_DIVIDER)
+
 -- ── FLY SECTION ────────────────────────────────────────────────────────────
 
-local FLY_SECTION_Y = AUTO_CASH_DIVIDER + 7
+local FLY_SECTION_Y = AUTO_STAGE_DIVIDER + 7
 
 local flySectionLabel = Instance.new("TextLabel")
 flySectionLabel.Size = UDim2.new(0, 221, 0, 18)
@@ -1421,6 +1652,39 @@ local function flyCarToSpot()
 
     local vehicleOffset = getVehicleToPivotOffset(char)
 
+    -- ── Detect driven car name for per-car Y offset ────────────────────────
+    local drivenCarName = ""
+    pcall(function()
+        hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.SeatPart then
+            local seat    = hum.SeatPart
+            local bodyPart = seat.Parent
+            local vehicle  = bodyPart and bodyPart.Parent
+            -- Walk up one more level if needed (some cars are nested deeper)
+            if vehicle and not vehicle:FindFirstChild("nameEffect") then
+                local outer = vehicle.Parent
+                if outer and outer:FindFirstChild("nameEffect") then
+                    vehicle = outer
+                end
+            end
+            if vehicle then
+                local ne = vehicle:FindFirstChild("nameEffect")
+                if ne then
+                    local pn = ne:FindFirstChild("PartName")
+                    local nl = pn and pn:FindFirstChild("NameLabel")
+                    drivenCarName = nl and nl.Text or ""
+                end
+            end
+        end
+    end)
+
+    local parkYOffset = CAR_PARK_Y_OFFSET[drivenCarName] or CAR_PARK_Y_DEFAULT
+    if drivenCarName ~= "" and CAR_PARK_Y_OFFSET[drivenCarName] then
+        setStatus("Car: " .. drivenCarName .. " (Y+" .. parkYOffset .. ")",
+            Color3.fromRGB(180, 180, 255))
+        task.wait(0.6)
+    end
+
     enableNoClip(char)
     local vel, gyro = setupFlyHandlers(rootPart)
 
@@ -1436,12 +1700,12 @@ local function flyCarToSpot()
     end
 
     -- Waypoint 2: ParkSpot.Hit — vehicle-center aligned
-    -- Hit box: center (84.9033, 5.568, -420.467), size 10.69 × 7.07 × 20.51
-    -- vehicleOffset corrects for seat position so the car body lands on center.
+    -- parkYOffset raises the target for cars with oversized wheels/ground clearance
+    -- so the vehicle body settles correctly inside the scoring zone after gravity drops it.
     local parkPos
     local ok2 = pcall(function()
         local hit = workspace.Stages["1Stage"].STAGE.ParkSpot.Hit
-        parkPos = hit.Position + vehicleOffset + Vector3.new(0, 2, 0)
+        parkPos = hit.Position + vehicleOffset + Vector3.new(0, parkYOffset, 0)
     end)
     if ok2 and parkPos then
         setStatus("Flying to ParkSpot...", Color3.fromRGB(255, 200, 50))
@@ -1588,6 +1852,21 @@ local function doOneCashSweep()
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return 0 end
 
+    -- Can't teleport HRP while seated in a vehicle — skip this cycle
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.SeatPart then return 0 end
+
+    -- Refresh cached parts in case plot changed (parked/unparked cars)
+    if cachedPlotFolder then
+        local refreshed = {}
+        for _, desc in pairs(cachedPlotFolder:GetDescendants()) do
+            if desc.Name == "Collect" and desc:IsA("BasePart") then
+                table.insert(refreshed, desc)
+            end
+        end
+        if #refreshed > 0 then cachedCollectParts = refreshed end
+    end
+
     local originalCF    = root.CFrame
     local collideStates = {}
     for _, part in ipairs(char:GetDescendants()) do
@@ -1617,6 +1896,15 @@ end
 
 local function performAutoBuy(carName, carModel)
     autoBuyRunning = true
+
+    -- Pause auto cash while auto buy runs (can't teleport while seated anyway)
+    local wasAutoCash = autoCashEnabled
+    if autoCashEnabled then
+        autoCashEnabled = false
+        autoCashButton.Text = "Auto Cash: OFF"
+        autoCashButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        setCashStatus("Paused (Auto Buy running...)")
+    end
 
     -- ── Funds check ────────────────────────────────────────────────────────
     local required = getPriceForCar(carName)
@@ -1707,6 +1995,17 @@ local function performAutoBuy(carName, carModel)
     task.wait(2)
     setStatus("Scanning...", Color3.fromRGB(160, 160, 160))
     autoBuyRunning = false
+
+    -- Resume auto cash if it was running before the buy
+    if wasAutoCash then
+        autoCashEnabled = true
+        autoCashButton.Text = "Auto Cash: ON"
+        autoCashButton.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
+        setCashStatus("Resuming...", Color3.fromRGB(80, 220, 100))
+        if not autoCashRunning then
+            task.spawn(runAutoCash)
+        end
+    end
 end
 
 -- ── AUTO CASH FUNCTIONS ────────────────────────────────────────────────────
@@ -1766,25 +2065,37 @@ local function findAndCachePlayerPlot()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return false end
 
+    local function extractCollectParts(folder)
+        local parts = {}
+        for _, desc in pairs(folder:GetDescendants()) do
+            if desc.Name == "Collect" and desc:IsA("BasePart") then
+                table.insert(parts, desc)
+            end
+        end
+        return parts
+    end
+
+    -- Primary method: plot has an Owner attribute set to player.UserId
+    for _, plot in ipairs(plots:GetChildren()) do
+        if plot:GetAttribute("Owner") == player.UserId then
+            local parts = extractCollectParts(plot)
+            if #parts > 0 then
+                cachedPlotFolder   = plot
+                cachedCollectParts = parts
+                return true
+            end
+        end
+    end
+
+    -- Fallback: scan for "PlayerName's Plot" text label (legacy / different server version)
     local targetText = player.Name .. "'s Plot"
 
     for _, obj in pairs(plots:GetDescendants()) do
         -- The owner TextLabel has no explicit Name; match by class + text
         if obj:IsA("TextLabel") and obj.Text == targetText then
-            -- Runtime-confirmed (debug output):
-            --   walkUp 1 = GUI (SurfaceGui)
-            --   walkUp 2 = PlayerName (Model)
-            --   walkUp 3 = Name (Folder)
-            --   walkUp 4 = plot Folder (direct child of Plots) <-- correct
             local plotFolder = walkUp(obj, 4)
             if plotFolder and plotFolder.Parent == plots then
-                -- Collect ALL "Collect" BaseParts under this plot
-                local parts = {}
-                for _, desc in pairs(plotFolder:GetDescendants()) do
-                    if desc.Name == "Collect" and desc:IsA("BasePart") then
-                        table.insert(parts, desc)
-                    end
-                end
+                local parts = extractCollectParts(plotFolder)
                 if #parts > 0 then
                     cachedPlotFolder   = plotFolder
                     cachedCollectParts = parts
@@ -1857,6 +2168,200 @@ local function runAutoCash()
 
     setCashStatus("Idle", Color3.fromRGB(160, 160, 160))
     autoCashRunning = false
+end
+
+-- ── AUTO STAGE FUNCTIONS ──────────────────────────────────────────────────
+
+-- Returns the BasePart trigger inside the Cash model for a given stage.
+-- Stage 1 has Cash as a direct child of 1Stage; stages 2+ have it inside Transition.
+local function getStageCashPart(stageNum, map)
+    local stagesFolder
+    if map == "Underground" then
+        stagesFolder = workspace:FindFirstChild("UndergroundStages")
+            or (workspace:FindFirstChild("Underground") and workspace.Underground:FindFirstChild("Stages"))
+    else
+        stagesFolder = workspace:FindFirstChild("Stages")
+    end
+    if not stagesFolder then return nil end
+
+    local stageFolder = stagesFolder:FindFirstChild(tostring(stageNum) .. "Stage")
+    if not stageFolder then return nil end
+
+    local transition = stageFolder:FindFirstChild("Transition")
+    local cashModel  = (transition and transition:FindFirstChild("Cash"))
+                    or stageFolder:FindFirstChild("Cash")
+    if not cashModel then return nil end
+
+    -- Return the first BasePart child (the invisible trigger plane)
+    for _, child in ipairs(cashModel:GetChildren()) do
+        if child:IsA("BasePart") then return child end
+    end
+    return nil
+end
+
+local autoStageStatusText = "Idle"
+local function setStageStatus(text, color)
+    autoStageStatusText = text
+    if stageStatusLabel then
+        stageStatusLabel.Text   = "Stage: " .. text
+        stageStatusLabel.TextColor3 = color or Color3.fromRGB(160, 160, 160)
+    end
+end
+
+local function runAutoStage()
+    autoStageRunning = true
+    setStageStatus("Starting...", Color3.fromRGB(255, 200, 50))
+
+    while autoStageEnabled do
+        -- ── Wait until player is seated in a car ───────────────────────────
+        local char = player.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hum and hum.SeatPart) then
+            setStageStatus("Waiting for car...", Color3.fromRGB(160, 160, 160))
+            local waited = 0
+            while autoStageEnabled and waited < 15 do
+                task.wait(0.5); waited += 0.5
+                char = player.Character
+                hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.SeatPart then break end
+            end
+        end
+        if not autoStageEnabled then break end
+
+        char = player.Character
+        hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hum and hum.SeatPart) then
+            setStageStatus("No car after 15s — retrying", Color3.fromRGB(255, 80, 80))
+            task.wait(3); continue
+        end
+
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        if not rootPart then task.wait(1); continue end
+
+        -- ── Determine current stage & target cash wall ─────────────────────
+        local currentStage = player:GetAttribute("CurrentStage") or 1
+        local cashPart     = getStageCashPart(currentStage, autoStageMap)
+        if not cashPart then
+            setStageStatus("Cash wall for stage " .. currentStage .. " not found", Color3.fromRGB(255, 80, 80))
+            task.wait(3); continue
+        end
+
+        -- ── Fly to the cash wall ───────────────────────────────────────────
+        enableNoClip(char)
+        local vel, gyro = setupFlyHandlers(rootPart)
+
+        -- Aim slightly behind the wall on the approach side, then push through
+        local targetPos = cashPart.Position + Vector3.new(0, 2, 0)
+        setStageStatus("Flying → stage " .. (currentStage + 1) .. "...", Color3.fromRGB(100, 200, 255))
+        flyToPosition(rootPart, vel, gyro, targetPos, 30)
+
+        -- Push through the wall by briefly applying forward velocity
+        if vel and vel.Parent then
+            vel.Velocity = Vector3.new(0, 0, -40)
+        end
+
+        -- Wait up to 4 s for CurrentStage attribute to advance
+        local prevStage = currentStage
+        for _ = 1, 40 do
+            task.wait(0.1)
+            if player:GetAttribute("CurrentStage") ~= prevStage then break end
+        end
+
+        if vel and vel.Parent then vel.Velocity = Vector3.zero end
+        disableNoClip()
+        removeFlyHandlers(rootPart)
+
+        local newStage = player:GetAttribute("CurrentStage") or currentStage
+        if newStage > prevStage then
+            setStageStatus("Stage " .. newStage .. " ✓", Color3.fromRGB(80, 220, 100))
+        else
+            setStageStatus("Missed — retrying stage " .. prevStage, Color3.fromRGB(255, 160, 50))
+        end
+        task.wait(0.8)
+    end
+
+    setStageStatus("Idle")
+    autoStageRunning = false
+end
+
+-- ── AUTO-QUEUE SCANNER FUNCTIONS ───────────────────────────────────────────
+
+-- Returns the Type string for a spawned car ("Normal","Gold","Diamond","Rainbow","Galaxy")
+local function getSpawnedCarType(carModel)
+    if carModel:GetAttribute("Galaxy")   then return "Galaxy"  end
+    if carModel:GetAttribute("Rainbow")  then return "Rainbow" end
+    if carModel:GetAttribute("Diamond")  then return "Diamond" end
+    if carModel:GetAttribute("Gold")     then return "Gold"    end
+    return "Normal"
+end
+
+-- Returns the rarity string from nameEffect, or "" if unavailable
+local function getSpawnedCarRarity(carModel)
+    local ne = carModel:FindFirstChild("nameEffect")
+    if not ne then return "" end
+    local rl = ne:FindFirstChild("Rarity")
+    return rl and rl.Text or ""
+end
+
+-- Returns the display name of a spawned car from nameEffect.PartName.NameLabel
+local function getSpawnedCarName(carModel)
+    local ne = carModel:FindFirstChild("nameEffect")
+    if not ne then return "" end
+    local pn = ne:FindFirstChild("PartName")
+    if not pn then return "" end
+    local nl = pn:FindFirstChild("NameLabel")
+    return nl and nl.Text or ""
+end
+
+local function runAutoQueueScanner()
+    while autoQueueEnabled do
+        pcall(function()
+            local spawnedCars = workspace:FindFirstChild("SpawnedCars")
+            if not spawnedCars then return end
+
+            for _, car in ipairs(spawnedCars:GetChildren()) do
+                if not autoQueueEnabled then return end
+
+                -- Rarity filter
+                if autoQueueRarity ~= "Any" then
+                    local rarity = getSpawnedCarRarity(car)
+                    if rarity ~= autoQueueRarity then goto continue end
+                end
+
+                -- Type filter (skip if set is non-empty and car type not in it)
+                if next(autoQueueTypes) ~= nil then
+                    local carType = getSpawnedCarType(car)
+                    if not autoQueueTypes[carType] then goto continue end
+                end
+
+                -- Name → find in carData
+                local displayName = getSpawnedCarName(car)
+                if displayName == "" then goto continue end
+
+                local matched = nil
+                for _, entry in ipairs(carData) do
+                    if entry.name == displayName then matched = entry.name; break end
+                end
+                if not matched then goto continue end
+
+                -- Skip if already queued
+                local alreadyIn = false
+                for _, n in ipairs(carQueue) do
+                    local entryName = type(n) == "table" and n.name or n
+                    if entryName == matched then alreadyIn = true; break end
+                end
+                if alreadyIn then goto continue end
+
+                -- Add to queue (scanner adds with empty types list = matches any type of that car)
+                table.insert(carQueue, {name = matched, types = {}})
+                rebuildQueueUI()
+                saveSettings()
+
+                ::continue::
+            end
+        end)
+        task.wait(2)
+    end
 end
 
 -- ── AUTO-REMOVE ADS LOGIC ─────────────────────────────────────────────────
@@ -2249,6 +2754,35 @@ autoAdsButton.MouseButton1Click:Connect(function()
     saveSettings()
 end)
 
+-- Auto-Queue toggle
+aqToggleButton.MouseButton1Click:Connect(function()
+    autoQueueEnabled = not autoQueueEnabled
+    if autoQueueEnabled then
+        aqToggleButton.Text = "Auto-Queue: ON"
+        aqToggleButton.BackgroundColor3 = Color3.fromRGB(0, 140, 60)
+        task.spawn(runAutoQueueScanner)
+    else
+        aqToggleButton.Text = "Auto-Queue: OFF"
+        aqToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    end
+end)
+
+-- Auto Stage toggle
+stageToggleButton.MouseButton1Click:Connect(function()
+    autoStageEnabled = not autoStageEnabled
+    if autoStageEnabled then
+        stageToggleButton.Text = "Auto Stage: ON"
+        stageToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
+        if not autoStageRunning then
+            task.spawn(runAutoStage)
+        end
+    else
+        stageToggleButton.Text = "Auto Stage: OFF"
+        stageToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        setStageStatus("Idle")
+    end
+end)
+
 -- Rejoin
 rejoinButton.MouseButton1Click:Connect(function()
     rejoinButton.Text = "Rejoining..."
@@ -2274,9 +2808,11 @@ game.DescendantAdded:Connect(function(obj)
 end)
 
 closeButton.MouseButton1Click:Connect(function()
-    autoCashEnabled = false
-    autoBuyEnabled  = false
-    autoAdsEnabled  = false
+    autoCashEnabled  = false
+    autoBuyEnabled   = false
+    autoAdsEnabled   = false
+    autoQueueEnabled = false
+    autoStageEnabled = false
     screenGui:Destroy()
 end)
 
@@ -2462,6 +2998,28 @@ task.spawn(function()
         autoAdsButton.Text = "🚫  Auto Remove Ads: ON"
         autoAdsButton.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
         suppressAds()
+    end
+
+    if saved.autoQueueRarity then
+        autoQueueRarity = saved.autoQueueRarity
+        aqRarityButton.Text = "▼  " .. autoQueueRarity
+    end
+
+    if saved.autoQueueTypes and type(saved.autoQueueTypes) == "table" then
+        autoQueueTypes = saved.autoQueueTypes
+        for typeName, active in pairs(autoQueueTypes) do
+            if active and aqTypeButtons[typeName] then
+                aqTypeButtons[typeName].BackgroundColor3 =
+                    aqTypeColors[typeName] or Color3.fromRGB(0, 130, 60)
+            end
+        end
+    end
+
+    if saved.autoStageMap then
+        autoStageMap = saved.autoStageMap
+        stageMapButton.Text = "Map: " .. autoStageMap
+        stageMapButton.BackgroundColor3 = (autoStageMap == "Underground")
+            and Color3.fromRGB(80, 40, 130) or Color3.fromRGB(40, 80, 130)
     end
 end)
 
