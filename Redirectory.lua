@@ -1,14 +1,10 @@
--- ══════════════════════════════════════════
---  Multi-Game Loader
--- ══════════════════════════════════════════
-
 local GAMES = {
     [113720203996283] = {
         "https://raw.githubusercontent.com/.../Park%20a%20Car%20Script.lua",
     },
     [89469502395769] = {
         "https://raw.githubusercontent.com/KevinAwesomeCoding/rbxscripts/refs/heads/main/Kick%20a%20Lucky%20Block%20Equip%20Best%20Pet.lua",
-        "https://api.jnkie.com/api/v1/luascripts/public/39a1b83faa98ff8079ca5be1c5eb8b2c72e7477b2ac0efc6f8e1df604e710648/download",
+        "https://pastefy.app/AtOZNoxR/raw",
     },
 }
 
