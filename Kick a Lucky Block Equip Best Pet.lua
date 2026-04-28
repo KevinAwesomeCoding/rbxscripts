@@ -11,7 +11,6 @@ local function getValue(tool)
     local level = tool:GetAttribute("Level") or 1
     local mutation = tool:GetAttribute("Mutation") or "None"
     
-    -- Calculate Base CPS from the {first, second} structure
     local baseCPS = 0
     if okE and EntitiesData.Brainrots and EntitiesData.Brainrots[tool.Name] then
         local cpsTable = EntitiesData.Brainrots[tool.Name].CPS
@@ -20,14 +19,12 @@ local function getValue(tool)
         end
     end
 
-    -- Apply Level Multiplier
     local levelMult = 1
     if type(EntitiesData.GetMultiplierPerLevel) == "function" then
         local ok, r = pcall(EntitiesData.GetMultiplierPerLevel, level)
         if ok and type(r) == "number" then levelMult = r end
     end
 
-    -- Apply Mutation Multiplier
     local mutMult = 1
     if okM and MutationData.Buffs and MutationData.Buffs[mutation] then
         mutMult = MutationData.Buffs[mutation].Value or 1
@@ -48,7 +45,6 @@ local function autoEquip()
 
     local slotCount = #plot.Slots:GetChildren()
     
-    -- Step 1: Pull pets
     for i = 1, slotCount do
         local slot = plot.Slots:FindFirstChild("Slot" .. i)
         if slot and slot:FindFirstChild("PlacedPart") then
@@ -59,9 +55,8 @@ local function autoEquip()
 
     task.wait(2)
 
-    -- Step 2: Rank brainrots only
     local pets = {}
-    local lines = {} -- For clipboard debug
+    local lines = {} 
     
     for _, tool in ipairs(player.Backpack:GetChildren()) do
         if tool:IsA("Tool") and okE and EntitiesData.Brainrots and EntitiesData.Brainrots[tool.Name] then
@@ -73,10 +68,10 @@ local function autoEquip()
 
     table.sort(pets, function(a, b) return a.value > b.value end)
     
-    -- Copy debug output
+
     if setclipboard then setclipboard(table.concat(lines, "\n")) end
 
-    -- Step 3: Equip best
+
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then
         for i = 1, math.min(slotCount, #pets) do
@@ -91,7 +86,7 @@ local function autoEquip()
     end
 end
 
--- GUI Setup: Using the original dark theme and label
+
 if player.PlayerGui:FindFirstChild("AutoEquipGui") then player.PlayerGui.AutoEquipGui:Destroy() end
 local sg = Instance.new("ScreenGui", player.PlayerGui)
 sg.Name = "AutoEquipGui"
@@ -100,11 +95,11 @@ sg.ResetOnSpawn = false
 local btn = Instance.new("TextButton", sg)
 btn.Size = UDim2.new(0, 155, 0, 36)
 btn.Position = UDim2.new(1, -165, 0, 20)
-btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45) -- Restored color
+btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45) 
 btn.TextColor3 = Color3.new(1, 1, 1)
 btn.Font = Enum.Font.Gotham
 btn.TextSize = 14
-btn.Text = "⭐ Auto Equip Best" -- Restored label
+btn.Text = "Auto Equip Best"
 btn.Parent = sg
 Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
